@@ -54,16 +54,78 @@ except Exception as e:
     st.error(f"데이터 파일('{DATA_PATH}')을 로드하는 중 오류가 발생했습니다. 저장소에 파일이 존재하는지 확인해 주세요.")
     st.stop()
 
+
+# ---------------------------------------------------------
+# 사이드바 (Sidebar) 필터 설정
+# ---------------------------------------------------------
+st.sidebar.header("🔍 데이터 필터")
+
+date_cols = [col for col in df.columns if 'date' in col.lower()]
+date_col_name = date_cols[0] if date_cols else None
+
+if date_col_name and pd.api.types.is_datetime64_any_dtype(df[date_col_name]):
+    min_date = df[date_col_name].min().date()
+    max_date = df[date_col_name].max().date()
+
+    # 날짜 범위 선택 위젯
+    selected_date_range = st.sidebar.date_input(
+        "📅 조회 기간 선택",
+        value=(min_date, max_date),
+        min_value=min_date,
+        max_value=max_date
+    )
+
+    # 선택된 범위로 데이터 필터링
+    if isinstance(selected_date_range, tuple) and len(selected_date_range) == 2:
+        start_date, end_date = selected_date_range
+        filtered_df = df[
+            (df[date_col_name].dt.date >= start_date) & 
+            (df[date_col_name].dt.date <= end_date)
+        ]
+    else:
+        filtered_df = df.copy()
+else:
+    filtered_df = df.copy()
+
+# ---------------------------------------------------------
+# 대시보드 헤더 및 주요 지표 (KPI) - filtered_df 적용
+# ---------------------------------------------------------
+st.title("⚡ Electronic Sales Data Dashboard")
+st.markdown("전자기기 판매 데이터 전처리 및 핵심 시각화 대시보드")
+
+# 선택된 기간 표시
+if date_col_name and 'start_date' in locals():
+    st.caption(f"📅 **현재 집계 기간:** {start_date} ~ {end_date}")
+else:
+    st.caption("📅 **현재 집계 기간:** 전체 기간")
+
+st.markdown("---")
+
+# 주요 지표 계산 (filtered_df 기준)
+total_revenue = filtered_df['Total Sales'].sum()
+total_orders = len(filtered_df)
+avg_order_value = total_revenue / total_orders if total_orders > 0 else 0
+
+col1, col2, col3 = st.columns(3)
+col1.metric("총 매출액 (Total Revenue)", f"${total_revenue:,.2f}")
+col2.metric("총 주문 건수 (Total Orders)", f"{total_orders:,} 건")
+col3.metric("평균 주문 금액 (AOV)", f"${avg_order_value:,.2f}")
+
+st.markdown("---")
+
+# ※ 아래 차트 작성 시 df 대신 filtered_df를 사용하면 필터가 차트에 즉시 반영됩니다.
+
+
 # 3. 대시보드 헤더 및 주요 지표(KPI)
 st.title("⚡ Electronic Sales Data Dashboard")
 st.markdown("전자기기 판매 데이터 전처리 및 핵심 시각화 대시보드")
 st.markdown("---")
 
 # --- [추가] 데이터 집계 기간 표기 ---
-date_cols = [col for col in df.columns if 'date' in col.lower()]
+date_cols = [col for col in filtered_df를.columns if 'date' in col.lower()]
 if date_cols and pd.api.types.is_datetime64_any_dtype(df[date_cols[0]]):
-    start_date = df[date_cols[0]].min().strftime('%Y-%m-%d')
-    end_date = df[date_cols[0]].max().strftime('%Y-%m-%d')
+    start_date = filtered_df를[date_cols[0]].min().strftime('%Y-%m-%d')
+    end_date = filtered_df를[date_cols[0]].max().strftime('%Y-%m-%d')
     st.caption(f"📅 **데이터 집계 기간:** {start_date} ~ {end_date}")
 else:
     st.caption("📅 **데이터 집계 기간:** 전체 기간")
@@ -71,8 +133,8 @@ else:
 st.markdown("---")
 
 # 주요 지표 계산
-total_revenue = df['Total Sales'].sum()
-total_orders = len(df)
+total_revenue = filtered_df를['Total Sales'].sum()
+total_orders = len(filtered_df를)
 avg_order_value = total_revenue / total_orders if total_orders > 0 else 0
 
 col1, col2, col3 = st.columns(3)
@@ -88,8 +150,8 @@ row1_col1, row1_col2 = st.columns(2)
 # Chart 1: 월별 매출 추이
 with row1_col1:
     st.subheader("📈 월별 매출 추이")
-    if 'YearMonth' in df.columns:
-        monthly_sales = df.groupby('YearMonth')['Total Sales'].sum().reset_index()
+    if 'YearMonth' in filtered_df를.columns:
+        monthly_sales = filtered_df를.groupby('YearMonth')['Total Sales'].sum().reset_index()
         fig_line = px.line(
             monthly_sales, 
             x='YearMonth', 
@@ -110,7 +172,7 @@ with row1_col2:
     
     if cat_cols:
         target_cat = cat_cols[0]
-        cat_sales = df.groupby(target_cat)['Total Sales'].sum().reset_index()
+        cat_sales = filtered_df를.groupby(target_cat)['Total Sales'].sum().reset_index()
         cat_sales = cat_sales.sort_values(by='Total Sales', ascending=False).head(10)
         
         fig_bar = px.bar(
@@ -136,7 +198,7 @@ with row2_col1:
     pay_cols = [c for c in df.columns if 'payment' in c.lower() or 'type' in c.lower()]
     
     if pay_cols:
-        pay_df = df[pay_cols[0]].value_counts().reset_index()
+        pay_df = filtered_df를[pay_cols[0]].value_counts().reset_index()
         pay_df.columns = [pay_cols[0], 'Count']
         
         fig_pie = px.pie(

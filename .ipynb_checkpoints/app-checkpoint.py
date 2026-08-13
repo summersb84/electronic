@@ -1,149 +1,145 @@
-import numpy as np
+import streamlit as st
 import pandas as pd
+import plotly.express as px
 
-# 1. 원본 데이터 로드 (실제 Kaggle csv 파일 경로로 지정)
-raw_df = pd.read_csv("Electronic_sales_Sep2023-Sep2024.csv")
-
-# [시연용] Kaggle 데이터셋 구조를 모방한 가상 데이터 생성
-np.random.seed(42)
-n_rows = 1000
-
-raw_df = pd.DataFrame(
-    {
-        "Order_ID": [f"ORD-{10000+i}" for i in range(n_rows)],
-        "Purchase_Date": pd.date_range(
-            start="2025-01-01", periods=n_rows, freq="h"
-        ),
-        "Product_Category": np.random.choice(
-            ["Smartphones", "Laptops", "Smart TVs", "Appliances", "Wearables"],
-            n_rows,
-        ),
-        "Product_Name": np.random.choice(
-            [
-                "Galaxy S24 Ultra",
-                "Galaxy Z Flip6",
-                "Galaxy Book4 Pro",
-                "Neo QLED 8K",
-                "Bespoke Grand AI",
-                "Galaxy Watch6",
-            ],
-            n_rows,
-        ),
-        "Unit_Price": np.random.choice(
-            [350000, 850000, 1450000, 2100000, 3200000], n_rows
-        ),
-        "Quantity": np.random.choice([1, 2, 3], n_rows, p=[0.85, 0.10, 0.05]),
-        "Store_Location": np.random.choice(
-            ["Seoul_South", "Seoul_North", "Gyeonggi", "Busan", "Daegu"], n_rows
-        ),
-        "Customer_Age": np.random.randint(20, 70, n_rows),
-        "Add_ons_Purchased": np.random.choice(
-            ["Warranty", "Accessory", "Both", "None"],
-            n_rows,
-            p=[0.30, 0.25, 0.20, 0.25],
-        ),
-        "Customer_Segment": np.random.choice(
-            ["BLUE", "SILVER", "GOLD", "VIP"], n_rows, p=[0.4, 0.3, 0.2, 0.1]
-        ),
-    }
+# 1. 페이지 기본 설정
+st.set_page_config(
+    page_title="Electronic Sales Dashboard",
+    page_icon="📊",
+    layout="wide"
 )
 
+# 2. 데이터 로드 및 전처리 함수 (캐싱 적용)
+@st.cache_data
+def load_and_preprocess_data(file_path):
+    # 데이터 불러오기
+    df = pd.read_csv("Electronic_sales_Sep2023-Sep2024.csv")
+    
+    # [전처리 1] 컬럼명 정리 (공백 제거 및 소문자화/대문자 통일)
+    df.columns = df.columns.str.strip()
+    
+    # [전처리 2] 날짜 데이터 형변환 (Order Date / Date 컬럼 대응)
+    date_col = [col for col in df.columns if 'date' in col.lower()]
+    if date_col:
+        df[date_col[0]] = pd.to_datetime(df[date_col[0]], errors='coerce')
+        # 연월/월 파생변수 생성
+        df['YearMonth'] = df[date_col[0]].dt.to_period('M').astype(str)
+        df['Month'] = df[date_col[0]].dt.month
+        df['DayOfWeek'] = df[date_col[0]].dt.day_name()
+    
+    # [전처리 3] 수치형 컬럼 결측치 처리 및 계산
+    # Total Price/Amount 컬럼이 없다면 Price * Quantity로 생성
+    cols_lower = {col.lower(): col for col in df.columns}
+    
+    if 'total price' not in cols_lower and 'total_amount' not in cols_lower:
+        price_col = [c for c in df.columns if 'price' in c.lower()]
+        qty_col = [c for c in df.columns if 'quantity' in c.lower() or 'qty' in c.lower()]
+        if price_col and qty_col:
+            df['Total Sales'] = df[price_col[0]] * df[qty_col[0]]
+    else:
+        sales_col = cols_lower.get('total price') or cols_lower.get('total_amount')
+        df['Total Sales'] = df[sales_col]
+        
+    # [전처리 4] 결측치 제거/대체
+    df = df.dropna(subset=['Total Sales'])
+    
+    return df
 
-# 2. 삼성전자판매 전용 데이터 변환 함수
-def transform_to_samsung_sales(df):
-    data = df.copy()
+# 데이터 불러오기 (파일명이 다를 경우 수정)
+DATA_PATH = "Electronic_sales_Sep2023-Sep2024.csv" 
 
-    # (1) 해외 지점명을 삼성스토어 실제 권역 및 지점명으로 매핑
-    store_map = {
-        "Seoul_South": ("수도권", "삼성스토어 강남"),
-        "Seoul_North": ("수도권", "삼성스토어 홍대"),
-        "Gyeonggi": ("수도권", "삼성스토어 판교"),
-        "Busan": ("영남권", "삼성스토어 부산본점"),
-        "Daegu": ("영남권", "삼성스토어 동대구"),
-    }
-    data["권역"] = data["Store_Location"].map(
-        lambda x: store_map.get(x, ("기타", "삼성스토어 기타"))[0]
-    )
-    data["지점명"] = data["Store_Location"].map(
-        lambda x: store_map.get(x, ("기타", "삼성스토어 기타"))[1]
-    )
+try:
+    df = load_and_preprocess_data(DATA_PATH)
+except Exception as e:
+    st.error(f"데이터 파일('{DATA_PATH}')을 로드하는 중 오류가 발생했습니다. 저장소에 파일이 존재하는지 확인해 주세요.")
+    st.stop()
 
-    # (2) 상품 카테고리 삼성스토어 분류체계 표준화
-    category_map = {
-        "Smartphones": "모바일",
-        "Wearables": "모바일/웨어러블",
-        "Laptops": "PC/태블릿",
-        "Smart TVs": "TV/AV",
-        "Appliances": "주방/생활가전",
-    }
-    data["카테고리"] = (
-        data["Product_Category"].map(category_map).fillna("기타가전")
-    )
+# 3. 대시보드 헤더 및 주요 지표(KPI)
+st.title("⚡ Electronic Sales Data Dashboard")
+st.markdown("전자기기 판매 데이터 전처리 및 핵심 시각화 대시보드")
+st.markdown("---")
 
-    # (3) 핵심 KPI: 삼성케어플러스 및 연계 상품(액세서리) 동시 구매 여부 생성
-    data["삼성케어플러스_가입"] = data["Add_ons_Purchased"].isin(
-        ["Warranty", "Both"]
-    )
-    data["액세서리_동시구매"] = data["Add_ons_Purchased"].isin(
-        ["Accessory", "Both"]
-    )
-    data["연계판매_성공여부"] = (
-        data["삼성케어플러스_가입"] | data["액세서리_동시구매"]
-    )
+# 주요 지표 계산
+total_revenue = df['Total Sales'].sum()
+total_orders = len(df)
+avg_order_value = total_revenue / total_orders if total_orders > 0 else 0
 
-    # (4) 매출액 및 추정 영업이익 계산 (카테고리별 마진율 반영)
-    data["총매출액"] = data["Unit_Price"] * data["Quantity"]
-    margin_rates = {
-        "모바일": 0.12,
-        "모바일/웨어러블": 0.15,
-        "PC/태블릿": 0.10,
-        "TV/AV": 0.18,
-        "주방/생활가전": 0.22,
-    }
-    data["추정마진율"] = data["카테고리"].map(margin_rates).fillna(0.15)
-    data["추정영업이익"] = data["총매출액"] * data["추정마진율"]
+col1, col2, col3 = st.columns(3)
+col1.metric("총 매출액 (Total Revenue)", f"${total_revenue:,.2f}")
+col2.metric("총 주문 건수 (Total Orders)", f"{total_orders:,} 건")
+col3.metric("평균 주문 금액 (AOV)", f"${avg_order_value:,.2f}")
 
-    # (5) 연령대 세그먼트 생성
-    data["연령대"] = pd.cut(
-        data["Customer_Age"],
-        bins=[0, 29, 39, 49, 59, 100],
-        labels=["20대 이하", "30대", "40대", "50대", "60대 이상"],
-    )
+st.markdown("---")
 
-    # (6) 컬럼명 한글화 및 정리
-    data.rename(
-        columns={
-            "Purchase_Date": "결제일시",
-            "Product_Name": "제품명",
-            "Unit_Price": "단가",
-            "Quantity": "수량",
-            "Customer_Segment": "삼성멤버십등급",
-        },
-        inplace=True,
-    )
+# 4. 시각화 차트 구성
+row1_col1, row1_col2 = st.columns(2)
 
-    target_cols = [
-        "Order_ID",
-        "결제일시",
-        "권역",
-        "지점명",
-        "카테고리",
-        "제품명",
-        "단가",
-        "수량",
-        "총매출액",
-        "추정영업이익",
-        "삼성케어플러스_가입",
-        "액세서리_동시구매",
-        "연계판매_성공여부",
-        "삼성멤버십등급",
-        "연령대",
-    ]
+# Chart 1: 월별 매출 추이
+with row1_col1:
+    st.subheader("📈 월별 매출 추이")
+    if 'YearMonth' in df.columns:
+        monthly_sales = df.groupby('YearMonth')['Total Sales'].sum().reset_index()
+        fig_line = px.line(
+            monthly_sales, 
+            x='YearMonth', 
+            y='Total Sales',
+            markers=True,
+            title="Monthly Sales Trend",
+            labels={'YearMonth': '연월', 'Total Sales': '매출액 ($)'}
+        )
+        st.plotly_chart(fig_line, use_container_width=True)
+    else:
+        st.info("날짜 컬럼을 찾을 수 없어 월별 추이를 표시하지 못했습니다.")
 
-    return data[target_cols]
+# Chart 2: 카테고리/제품별 매출 Top 10
+with row1_col2:
+    st.subheader("📦 카테고리/제품별 매출 Top 10")
+    # Category 또는 Product Name 컬럼 탐색
+    cat_cols = [c for c in df.columns if 'category' in c.lower() or 'product' in c.lower()]
+    
+    if cat_cols:
+        target_cat = cat_cols[0]
+        cat_sales = df.groupby(target_cat)['Total Sales'].sum().reset_index()
+        cat_sales = cat_sales.sort_values(by='Total Sales', ascending=False).head(10)
+        
+        fig_bar = px.bar(
+            cat_sales, 
+            x='Total Sales', 
+            y=target_cat, 
+            orientation='h',
+            color='Total Sales',
+            color_continuous_scale='Viridis',
+            title=f"Top Sales by {target_cat}",
+            labels={'Total Sales': '매출액 ($)', target_cat: '카테고리/제품'}
+        )
+        fig_bar.update_layout(yaxis={'categoryorder': 'total ascending'})
+        st.plotly_chart(fig_bar, use_container_width=True)
+    else:
+        st.info("카테고리 또는 제품 컬럼을 찾을 수 없습니다.")
 
+row2_col1, row2_col2 = st.columns(2)
 
-# 3. 데이터 변환 및 Streamlit용 데이터셋 저장
-samsung_sales_df = transform_to_samsung_sales(raw_df)
-samsung_sales_df.to_csv("samsung_store_sales_processed.csv", index=False)
-print("변환 완료! 생성된 데이터 수:", len(samsung_sales_df))
+# Chart 3: 결제 수단 / 구매 유형 비중
+with row2_col1:
+    st.subheader("💳 결제 수단 비중")
+    pay_cols = [c for c in df.columns if 'payment' in c.lower() or 'type' in c.lower()]
+    
+    if pay_cols:
+        pay_df = df[pay_cols[0]].value_counts().reset_index()
+        pay_df.columns = [pay_cols[0], 'Count']
+        
+        fig_pie = px.pie(
+            pay_df, 
+            names=pay_cols[0], 
+            values='Count',
+            hole=0.4,
+            title="Payment Method Share"
+        )
+        st.plotly_chart(fig_pie, use_container_width=True)
+    else:
+        st.info("결제 수단 컬럼을 찾을 수 없습니다.")
+
+# Chart 4: 데이터 미리보기 (전처리 완료 데이터)
+with row2_col2:
+    st.subheader("🔍 전처리 데이터 샘플")
+    st.dataframe(df.head(10), use_container_width=True)

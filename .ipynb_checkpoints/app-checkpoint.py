@@ -59,6 +59,17 @@ st.title("⚡ Electronic Sales Data Dashboard")
 st.markdown("전자기기 판매 데이터 전처리 및 핵심 시각화 대시보드")
 st.markdown("---")
 
+# --- [추가] 데이터 집계 기간 표기 ---
+date_cols = [col for col in df.columns if 'date' in col.lower()]
+if date_cols and pd.api.types.is_datetime64_any_dtype(df[date_cols[0]]):
+    start_date = df[date_cols[0]].min().strftime('%Y-%m-%d')
+    end_date = df[date_cols[0]].max().strftime('%Y-%m-%d')
+    st.caption(f"📅 **데이터 집계 기간:** {start_date} ~ {end_date}")
+else:
+    st.caption("📅 **데이터 집계 기간:** 전체 기간")
+
+st.markdown("---")
+
 # 주요 지표 계산
 total_revenue = df['Total Sales'].sum()
 total_orders = len(df)

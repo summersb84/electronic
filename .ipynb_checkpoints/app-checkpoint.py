@@ -4,6 +4,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import numpy as np
+import itertools
+
 
 # 1. 페이지 기본 설정
 st.set_page_config(
@@ -270,27 +272,110 @@ with col_right:
 
 st.markdown("---")
 
-# === 하단 영역: 카테고리 Top 10 및 결제 수단 ===
-sub_col1, sub_col2 = st.columns(2)
+# ---------------------------------------------------------
+# 4. 제품별 매출 및 제품 교차 구매(Cross-selling) 분석
+# ---------------------------------------------------------
+st.markdown("---")
+st.header("📦 제품별 매출 및 교차 구매 분석 (Product Sales & Cross-Selling)")
 
-with sub_col1:
-    st.subheader("📦 카테고리/제품별 매출 Top 10")
-    cat_cols = [c for c in filtered_df.columns if 'category' in c.lower() or 'product' in c.lower()]
-    if cat_cols:
-        target_cat = cat_cols[0]
-        cat_sales = filtered_df.groupby(target_cat)['Total Sales'].sum().reset_index().sort_values(by='Total Sales', ascending=False).head(10)
-        fig_bar = px.bar(cat_sales, x='Total Sales', y=target_cat, orientation='h', color='Total Sales', color_continuous_scale='Viridis')
-        fig_bar.update_layout(yaxis={'categoryorder': 'total ascending'})
-        st.plotly_chart(fig_bar, use_container_width=True)
+# 컬럼 자동 매핑
+prod_cols = [c for c in filtered_df.columns if 'product' in c.lower() or 'item' in c.lower() or 'goods' in c.lower()]
+order_cols = [c for c in filtered_df.columns if 'order' in c.lower() or 'invoice' in c.lower() or 'transaction' in c.lower()]
+cust_cols = [c for c in filtered_df.columns if 'customer' in c.lower() or 'user' in c.lower()]
 
-with sub_col2:
-    st.subheader("💳 결제 수단 비중")
-    pay_cols = [c for c in filtered_df.columns if 'payment' in c.lower() or 'type' in c.lower()]
-    if pay_cols:
-        pay_df = filtered_df[pay_cols[0]].value_counts().reset_index()
-        pay_df.columns = [pay_cols[0], 'Count']
-        fig_pie = px.pie(pay_df, names=pay_cols[0], values='Count', hole=0.4)
-        st.plotly_chart(fig_pie, use_container_width=True)
+prod_col = prod_cols[0] if prod_cols else None
+order_col = order_cols[0] if order_cols else (cust_cols[0] if cust_cols else None)
+
+col_chart1, col_chart2 = st.columns(2)
+
+# === 1) 제품별 매출 분석 (Bar Chart) ===
+with col_chart1:
+    st.subheader("📊 제품별 매출 순위 (Product Sales)")
+    if prod_col and 'Total Sales' in filtered_df.columns:
+        prod_sales = (
+            filtered_df.groupby(prod_col)['Total Sales']
+            .sum()
+            .reset_index()
+            .sort_values(by='Total Sales', ascending=True)  # 가로 막대 그래프용 정렬
+        )
+        
+        fig_prod_sales = px.bar(
+            prod_sales,
+            x='Total Sales',
+            y=prod_col,
+            orientation='h',
+            title='Top Selling Products by Revenue',
+            labels={'Total Sales': '총 매출액 ($)', prod_col: '제품명'},
+            text_auto=',.0f',
+            color='Total Sales',
+            color_continuous_scale='Blues'
+        )
+        fig_prod_sales.update_layout(
+            coloraxis_showscale=False,
+            height=450,
+            margin=dict(l=10, r=10, t=40, b=10)
+        )
+        st.plotly_chart(fig_prod_sales, use_container_width=True)
+    else:
+        st.warning("제품명(Product) 및 매출(Total Sales) 컬럼을 찾을 수 없습니다.")
+
+# === 2) 제품 교차 구매 분석 (Cross-Selling Heatmap) ===
+with col_chart2:
+    st.subheader("🔄 제품 간 교차 구매 빈도 (Cross-Selling)")
+    if prod_col and order_col:
+        # 동일 주문/고객 내 중복 제품 제거
+        order_prod_df = filtered_df[[order_col, prod_col]].drop_duplicates()
+        
+        # 2개 이상 구매한 주문만 필터링
+        order_counts = order_prod_df.groupby(order_col)[prod_col].nunique()
+        multi_item_orders = order_counts[order_counts > 1].index
+        filtered_multi = order_prod_df[order_prod_df[order_col].isin(multi_item_orders)]
+        
+        if not filtered_multi.empty:
+            # 주문별 제품 리스트 집계
+            grouped_orders = filtered_multi.groupby(order_col)[prod_col].apply(list)
+            
+            # 동시 구매 조합(Co-occurrence) 빈도 계산
+            pair_counts = {}
+            for items in grouped_orders:
+                # 주문 내 존재하는 모든 2개 제품 조합 쌍 생성
+                for p1, p2 in itertools.combinations(sorted(set(items)), 2):
+                    pair_counts[(p1, p2)] = pair_counts.get((p1, p2), 0) + 1
+                    pair_counts[(p2, p1)] = pair_counts.get((p2, p1), 0) + 1  # 대칭 행렬 구성
+            
+            unique_products = sorted(filtered_df[prod_col].unique())
+            matrix_df = pd.DataFrame(0, index=unique_products, columns=unique_products)
+            
+            for (p1, p2), count in pair_counts.items():
+                matrix_df.loc[p1, p2] = count
+
+            # 히트맵 시각화
+            fig_cross = px.imshow(
+                matrix_df,
+                labels=dict(x="함께 구매된 제품 B", y="기준 제품 A", color="동시 구매 건수"),
+                x=matrix_df.columns,
+                y=matrix_df.index,
+                color_continuous_scale="Purples",
+                aspect="auto",
+                title="Product Co-occurrence Matrix"
+            )
+            fig_cross.update_layout(
+                height=450,
+                margin=dict(l=10, r=10, t=40, b=10)
+            )
+            st.plotly_chart(fig_cross, use_container_width=True)
+            
+        else:
+            st.info("💡 동일 주문 내 2개 이상의 서로 다른 제품을 구매한 이력이 없어 교차 구매 히트맵을 생성할 수 없습니다.")
+    else:
+        st.warning("교차 구매 분석을 위한 식별자(Order/Customer ID) 또는 제품(Product) 컬럼이 부족합니다.")
+
+# === 💡 Insights & Cross-selling Strategy ===
+st.info(
+    "💡 **교차 구매(Cross-Selling) 인사이트 활용 안내**\n"
+    "- **상단 매출 막대 그래프:** 전체 매출 기여도가 높은 효자 상품(Hero Product)을 식별합니다.\n"
+    "- **교차 구매 히트맵:** 동시 구매 빈도가 높은 제품 조합(진한 보라색 칸)을 발굴하여 **'함께 많이 찾는 상품' 묶음 할인(Bundle) 구성**이나 **상세페이지 하단 연관 상품 추천 연동**에 활용합니다."
+)
 
 
 # ---------------------------------------------------------

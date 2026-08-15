@@ -123,14 +123,37 @@ st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True) 
 
 # === KPI Row 2: 고객 관점 지표 ===
 kpi_col4, kpi_col5, kpi_col6 = st.columns(3)
+
 if cust_col:
-    kpi_col4.metric("총 주문 고객수 (Total Customers)", f"{total_customers:,} 명")
-    kpi_col5.metric("인당 객단가 (Revenue / Customer)", f"${arpu:,.2f}")
-    kpi_col6.metric("재구매율 (Repeat Purchase Rate)", f"{repeat_rate:.1f}%")
+    kpi_col4.metric(
+        label="총 주문 고객수 (Total Customers)", 
+        value=f"{total_customers:,} 명",
+        help="선택된 집계 기간 동안 1회 이상 구매 이력이 있는 고유 고객(Customer ID 기준) 수입니다."
+    )
+    
+    kpi_col5.metric(
+        label="인당 객단가 (ARPU)", 
+        value=f"${arpu:,.2f}",
+        help="고객 1인당 평균 결제 금액입니다. (산출식: 총 매출액 ÷ 총 주문 고객수)"
+    )
+    
+    kpi_col6.metric(
+        label="재구매율 (Repeat Purchase Rate)", 
+        value=f"{repeat_rate:.1f}%",
+        help="전체 구매 고객 중 2회 이상 주문한 고객의 비중입니다. (산출식: 2회 이상 주문 고객수 ÷ 총 주문 고객수 × 100)"
+    )
 else:
     kpi_col4.metric("총 주문 고객수", "N/A")
     kpi_col5.metric("인당 객단가", "N/A")
     kpi_col6.metric("재구매율", "N/A")
+
+# 하단 텍스트 설명 보완 (지표 바로 아래에 표시)
+st.caption(
+    "💡 **지표 정의 및 산출 안내** | "
+    "**건당 평균 금액**: 1회 주문 기준 평균 결제액 | "
+    "**인당 객단가**: 고객 1명이 기간 내 기여한 총 매출 | "
+    "**재구매율**: 기간 내 2회 이상 재주문한 리텐션 고객 비중"
+)
 
 st.markdown("---")
 

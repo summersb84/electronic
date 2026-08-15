@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import numpy as np
 
 # 1. 페이지 기본 설정
 st.set_page_config(
@@ -292,14 +293,11 @@ with sub_col2:
         st.plotly_chart(fig_pie, use_container_width=True)
 
 
-
-import numpy as np
-
 # ---------------------------------------------------------
-# 5. RFM 분석 및 고객 세분화 (Treemap 시각화)
+# 5. RFM 기반 고객 세분화 분석 (Scatter Plot 시각화)
 # ---------------------------------------------------------
 st.markdown("---")
-st.header("🎯 RFM 기반 고객 세분화 분석 (Customer Segmentation)")
+st.header("🎯 RFM 기반 고객 세분화 분석 (Scatter Plot)")
 
 cust_cols = [c for c in filtered_df.columns if 'customer' in c.lower() or 'user' in c.lower() or 'client' in c.lower()]
 date_cols = [c for c in filtered_df.columns if 'date' in c.lower()]
@@ -319,12 +317,11 @@ if cust_cols and date_cols and 'Total Sales' in filtered_df.columns:
     ).reset_index()
 
     # 3) RFM 점수화 (1~5점 스코어링)
-    # 데이터 분포에 따라 duplicates='drop' 옵션 적용
     rfm_df['R_Score'] = pd.qcut(rfm_df['Recency'], q=5, labels=[5, 4, 3, 2, 1], duplicates='drop').astype(int)
     rfm_df['F_Score'] = pd.cut(rfm_df['Frequency'], bins=5, labels=[1, 2, 3, 4, 5], duplicates='drop').astype(int)
     rfm_df['M_Score'] = pd.qcut(rfm_df['Monetary'], q=5, labels=[1, 2, 3, 4, 5], duplicates='drop').astype(int)
 
-    # 4) 세그먼트 규칙 정의 함수
+    # 4) 세그먼트 규칙 정의
     def segment_customer(df):
         r, f, m = df['R_Score'], df['F_Score'], df['M_Score']
         if r >= 4 and f >= 4 and m >= 4:
@@ -340,7 +337,42 @@ if cust_cols and date_cols and 'Total Sales' in filtered_df.columns:
 
     rfm_df['Segment'] = rfm_df.apply(segment_customer, axis=1)
 
-    # 5) 세그먼트별 집계 데이터 생성
+    # 5) Scatter Plot 차트 생성
+    fig_scatter = px.scatter(
+        rfm_df,
+        x='Recency',
+        y='Monetary',
+        size='Frequency',
+        color='Segment',
+        hover_name=cust_col,
+        title='Customer Segments: Recency vs Monetary (Size = Frequency)',
+        labels={
+            'Recency': 'Recency (최근 구매 후 경과일)',
+            'Monetary': 'Monetary (총 구매 금액 $)',
+            'Frequency': '구매 빈도(회)',
+            'Segment': '고객 세그먼트'
+        },
+        color_discrete_map={
+            'VIP (Champs)': '#1f77b4',
+            'Loyal Customers': '#2ca02c',
+            'At-Risk (이탈 위험군)': '#d62728',
+            'New Customers (신규)': '#ff7f0e',
+            'Hibernating (휴면 유저)': '#7f7f7f'
+        },
+        opacity=0.7
+    )
+
+    fig_scatter.update_layout(
+        xaxis_title="← 최근 구매 (경과일 작음) | 오랫동안 미구매 (경과일큼) →",
+        yaxis_title="총 구매 금액 ($)",
+        legend_title="세그먼트 구분",
+        height=500
+    )
+
+    # 차트 출력
+    st.plotly_chart(fig_scatter, use_container_width=True)
+
+    # 6) 세그먼트별 수치 데이터 요약 표
     rfm_summary = rfm_df.groupby('Segment').agg(
         Customer_Count=(cust_col, 'count'),
         Total_Monetary=('Monetary', 'sum'),
@@ -351,60 +383,20 @@ if cust_cols and date_cols and 'Total Sales' in filtered_df.columns:
 
     rfm_summary['Revenue_Share'] = (rfm_summary['Total_Monetary'] / rfm_summary['Total_Monetary'].sum()) * 100
 
-    # 6) Treemap 및 상세 표 레이아웃 구성
-    rfm_col1, rfm_col2 = st.columns([1.1, 0.9])
-
-    with rfm_col1:
-        st.subheader("📌 고객 세그먼트별 분포 (Treemap)")
-        
-        # Treemap 차트 생성 (면적: 고객수, 색상: 총 매출액)
-        fig_treemap = px.treemap(
-            rfm_summary,
-            path=['Segment'],
-            values='Customer_Count',
-            color='Total_Monetary',
-            color_continuous_scale='Blues',
-            title='RFM Customer Segment Distribution (Size: Customers, Color: Revenue)',
-            custom_data=['Total_Monetary', 'Revenue_Share', 'Avg_Recency', 'Avg_Frequency']
-        )
-        
-        fig_treemap.update_traces(
-            hovertemplate="<b>%{label}</b><br>" +
-                          "고객 수: %{value:,} 명<br>" +
-                          "총 매출액: $ %{customdata[0]:,.2f} (%{customdata[1]:.1f}%)<br>" +
-                          "평균 최근성: %{customdata[2]:.1f}일 전<br>" +
-                          "평균 구매빈도: %{customdata[3]:.1f}회"
-        )
-        fig_treemap.update_layout(margin=dict(t=50, l=10, r=10, b=10))
-        st.plotly_chart(fig_treemap, use_container_width=True)
-
-    with rfm_col2:
-        st.subheader("📊 세그먼트별 요약 지표")
-        
-        # 출력용 데이터프레임 가공
-        display_rfm = rfm_summary.copy()
-        display_rfm.columns = ['세그먼트', '고객수(명)', '총매출($)', '평균최근성(일)', '평균구매(회)', '평균구매액($)', '매출점유율(%)']
-        
-        st.dataframe(
-            display_rfm.style.format({
-                '고객수(명)': '{:,}',
-                '총매출($)': '${:,.2f}',
-                '평균최근성(일)': '{:.1f}',
-                '평균구매(회)': '{:.1f}',
-                '평균구매액($)': '${:,.2f}',
-                '매출점유율(%)': '{:.1f}%'
-            }),
-            use_container_width=True,
-            height=320
-        )
-
-    # 7) 세그먼트 액션 플랜 인사이트
-    st.info(
-        "💡 **RFM 세그먼트별 타겟 마케팅 액션 플랜**\n"
-        "- **VIP (Champs):** 신제품 우선 알림, 전용 혜택/프리미엄 케어로 로열티 유지\n"
-        "- **Loyal Customers:** 업셀링/크로스셀링 캠페인 및 멤버십 등급 상승 혜택 제공\n"
-        "- **At-Risk (이탈 위험군):** 구매 주기를 이탈한 우수 고객 대상 재방문 할인 쿠폰/복귀 프로모션 발송\n"
-        "- **New Customers:** 2차 구매 유도를 위한 웰컴 쿠폰 및 인기 상품 추천"
+    st.subheader("📊 세그먼트별 평균 지표 분포")
+    display_rfm = rfm_summary.copy()
+    display_rfm.columns = ['세그먼트', '고객수(명)', '총매출($)', '평균최근성(일)', '평균구매(회)', '평균구매액($)', '매출점유율(%)']
+    
+    st.dataframe(
+        display_rfm.style.format({
+            '고객수(명)': '{:,}',
+            '총매출($)': '${:,.2f}',
+            '평균최근성(일)': '{:.1f}',
+            '평균구매(회)': '{:.1f}',
+            '평균구매액($)': '${:,.2f}',
+            '매출점유율(%)': '{:.1f}%'
+        }),
+        use_container_width=True
     )
 
 else:

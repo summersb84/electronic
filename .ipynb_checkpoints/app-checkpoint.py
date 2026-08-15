@@ -82,7 +82,6 @@ else:
 st.title("⚡ Electronic Sales Data Dashboard")
 st.markdown("전자기기 판매 데이터 전처리 및 핵심 시각화 대시보드")
 
-# 선택된 기간 표시
 if start_date and end_date:
     st.caption(f"📅 **현재 집계 기간:** {start_date} ~ {end_date}")
 else:
@@ -90,7 +89,6 @@ else:
 
 st.markdown("---")
 
-# 주요 지표 계산 (filtered_df 기준)
 total_revenue = filtered_df['Total Sales'].sum()
 total_orders = len(filtered_df)
 avg_order_value = total_revenue / total_orders if total_orders > 0 else 0
@@ -103,16 +101,17 @@ col3.metric("평균 주문 금액 (AOV)", f"${avg_order_value:,.2f}")
 st.markdown("---")
 
 # ---------------------------------------------------------
-# 4. 시각화 차트 구성 (filtered_df 연동)
+# 4. 시각화 차트 구성 (레이아웃 재배치)
 # ---------------------------------------------------------
+
+# === ROW 1: 월별 매출 추이 | 월별 구매자 추이 ===
 row1_col1, row1_col2 = st.columns(2)
 
-# Chart 1: 월별 매출 추이
 with row1_col1:
-    st.subheader("📈 월별 매출 추이")
+    st.subheader("📈 Chart 1: 월별 매출 추이")
     if 'YearMonth' in filtered_df.columns:
         monthly_sales = filtered_df.groupby('YearMonth')['Total Sales'].sum().reset_index()
-        fig_line = px.line(
+        fig_sales = px.line(
             monthly_sales, 
             x='YearMonth', 
             y='Total Sales',
@@ -120,13 +119,37 @@ with row1_col1:
             title="Monthly Sales Trend",
             labels={'YearMonth': '연월', 'Total Sales': '매출액 ($)'}
         )
-        st.plotly_chart(fig_line, use_container_width=True)
+        st.plotly_chart(fig_sales, use_container_width=True)
     else:
-        st.info("날짜 컬럼을 찾을 수 없어 월별 추이를 표시하지 못했습니다.")
+        st.info("날짜 컬럼을 찾을 수 없습니다.")
 
-# Chart 2: 카테고리/제품별 매출 Top 10
 with row1_col2:
-    st.subheader("📦 카테고리/제품별 매출 Top 10")
+    st.subheader("👥 월별 구매자 추이")
+    user_cols = [c for c in filtered_df.columns if 'customer' in c.lower() or 'user' in c.lower() or 'client' in c.lower()]
+    
+    if 'YearMonth' in filtered_df.columns and user_cols:
+        cust_col = user_cols[0]
+        monthly_users = filtered_df.groupby('YearMonth')[cust_col].nunique().reset_index()
+        monthly_users.columns = ['YearMonth', 'Active Users']
+        
+        fig_users = px.bar(
+            monthly_users,
+            x='YearMonth',
+            y='Active Users',
+            title="Monthly Unique Customers",
+            labels={'YearMonth': '연월', 'Active Users': '구매자 수 (명)'},
+            color_discrete_sequence=['#636EFA']
+        )
+        st.plotly_chart(fig_users, use_container_width=True)
+    else:
+        st.info("고객 ID 또는 날짜 컬럼을 찾을 수 없어 구매자 추이를 표시하지 못했습니다.")
+
+
+# === ROW 2: 카테고리/제품별 매출 Top 10 | Loyalty Member 구분별 지표 ===
+row2_col1, row2_col2 = st.columns(2)
+
+with row2_col1:
+    st.subheader("📦 Chart 2: 카테고리/제품별 매출 Top 10")
     cat_cols = [c for c in filtered_df.columns if 'category' in c.lower() or 'product' in c.lower()]
     
     if cat_cols:
@@ -149,10 +172,31 @@ with row1_col2:
     else:
         st.info("카테고리 또는 제품 컬럼을 찾을 수 없습니다.")
 
-row2_col1, row2_col2 = st.columns(2)
+with row2_col2:
+    st.subheader("👑 Loyalty Member 구분별 지표")
+    loyalty_cols = [c for c in filtered_df.columns if 'loyalty' in c.lower() or 'member' in c.lower()]
+    
+    if loyalty_cols:
+        loyalty_col = loyalty_cols[0]
+        loyalty_sales = filtered_df.groupby(loyalty_col)['Total Sales'].sum().reset_index()
+        
+        fig_loyalty = px.pie(
+            loyalty_sales,
+            names=loyalty_col,
+            values='Total Sales',
+            hole=0.4,
+            title=f"Sales Share by {loyalty_col}",
+            color_discrete_sequence=px.colors.qualitative.Pastel
+        )
+        st.plotly_chart(fig_loyalty, use_container_width=True)
+    else:
+        st.info("Loyalty Member 컬럼을 찾을 수 없습니다.")
 
-# Chart 3: 결제 수단 비중
-with row2_col1:
+
+# === ROW 3: 결제 수단 비중 | 데이터 미리보기 ===
+row3_col1, row3_col2 = st.columns(2)
+
+with row3_col1:
     st.subheader("💳 결제 수단 비중")
     pay_cols = [c for c in filtered_df.columns if 'payment' in c.lower() or 'type' in c.lower()]
     
@@ -171,7 +215,6 @@ with row2_col1:
     else:
         st.info("결제 수단 컬럼을 찾을 수 없습니다.")
 
-# Chart 4: 데이터 미리보기 (필터링 완료 데이터)
-with row2_col2:
+with row3_col2:
     st.subheader("🔍 필터링 데이터 샘플")
     st.dataframe(filtered_df.head(10), use_container_width=True)

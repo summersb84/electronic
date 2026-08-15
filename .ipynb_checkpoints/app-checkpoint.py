@@ -91,14 +91,46 @@ else:
 
 st.markdown("---")
 
+# 고객 ID 컬럼 탐색
+user_cols = [c for c in filtered_df.columns if 'customer' in c.lower() or 'user' in c.lower() or 'client' in c.lower()]
+cust_col = user_cols[0] if user_cols else None
+
+# === KPI 주요 지표 계산 ===
 total_revenue = filtered_df['Total Sales'].sum()
 total_orders = len(filtered_df)
 avg_order_value = total_revenue / total_orders if total_orders > 0 else 0
 
-col1, col2, col3 = st.columns(3)
-col1.metric("총 매출액 (Total Revenue)", f"${total_revenue:,.2f}")
-col2.metric("총 주문 건수 (Total Orders)", f"{total_orders:,} 건")
-col3.metric("평균 주문 금액 (AOV)", f"${avg_order_value:,.2f}")
+if cust_col and cust_col in filtered_df.columns:
+    total_customers = filtered_df[cust_col].nunique()
+    arpu = total_revenue / total_customers if total_customers > 0 else 0  # 인당 객단가
+    
+    # 재구매율 계산 (2회 이상 구매 고객 비율)
+    order_counts_per_cust = filtered_df.groupby(cust_col).size()
+    repeat_customers = (order_counts_per_cust >= 2).sum()
+    repeat_rate = (repeat_customers / total_customers * 100) if total_customers > 0 else 0
+else:
+    total_customers = 0
+    arpu = 0
+    repeat_rate = 0
+
+# === KPI Row 1: 기본 실적 지표 ===
+kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
+kpi_col1.metric("총 매출액 (Total Revenue)", f"${total_revenue:,.2f}")
+kpi_col2.metric("총 주문 건수 (Total Orders)", f"{total_orders:,} 건")
+kpi_col3.metric("평균 주문 금액 (건당)", f"${avg_order_value:,.2f}")
+
+st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True) # 줄간격 여백
+
+# === KPI Row 2: 고객 관점 지표 ===
+kpi_col4, kpi_col5, kpi_col6 = st.columns(3)
+if cust_col:
+    kpi_col4.metric("총 주문 고객수 (Total Customers)", f"{total_customers:,} 명")
+    kpi_col5.metric("인당 객단가 (Revenue / Customer)", f"${arpu:,.2f}")
+    kpi_col6.metric("재구매율 (Repeat Purchase Rate)", f"{repeat_rate:.1f}%")
+else:
+    kpi_col4.metric("총 주문 고객수", "N/A")
+    kpi_col5.metric("인당 객단가", "N/A")
+    kpi_col6.metric("재구매율", "N/A")
 
 st.markdown("---")
 

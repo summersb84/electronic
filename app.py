@@ -370,6 +370,7 @@ with col_chart2:
     else:
         st.warning("교차 구매 분석을 위한 식별자(Order/Customer ID) 또는 제품(Product) 컬럼이 부족합니다.")
 
+)
 
 # ---------------------------------------------------------
 # 제품 분석 하단: 상위 Top 5 제품 월별 매출 추이 (Time-Series Line Chart)

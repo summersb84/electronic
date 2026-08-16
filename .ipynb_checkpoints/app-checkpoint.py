@@ -409,14 +409,16 @@ if cust_cols and date_cols and 'Total Sales' in filtered_df.columns:
     rfm_df['F_Score'] = pd.cut(rfm_df['Frequency'], bins=5, labels=[1, 2, 3, 4, 5], duplicates='drop').astype(int)
     rfm_df['M_Score'] = pd.qcut(rfm_df['Monetary'], q=5, labels=[1, 2, 3, 4, 5], duplicates='drop').astype(int)
 
-    # 4) 세그먼트 규칙 정의
+    # 4) 세그먼트 규칙 정의 (이탈 위험군 조건 완화 적용)
     def segment_customer(df):
         r, f, m = df['R_Score'], df['F_Score'], df['M_Score']
+        
         if r >= 4 and f >= 4 and m >= 4:
             return 'VIP (Champs)'
-        elif f >= 3 and m >= 3:
+        elif r >= 3 and (f >= 3 or m >= 3):
             return 'Loyal Customers'
-        elif r <= 2 and f >= 3 and m >= 3:
+        # [수정] R_Score가 낮고(이탈 가능성), F 또는 M 중 하나라도 높았던 유저를 At-Risk로 분류
+        elif r <= 2 and (f >= 3 or m >= 3):
             return 'At-Risk (이탈 위험군)'
         elif r >= 4 and f <= 2:
             return 'New Customers (신규)'

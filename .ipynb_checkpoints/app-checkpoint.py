@@ -299,6 +299,10 @@ with col_chart1:
             .sort_values(by='Total Sales', ascending=True)  # 가로 막대 그래프용 정렬
         )
         
+        # [개선] 제품이 너무 많을 경우 가독성을 위해 상위 15개만 슬라이싱 (필요시 조정 가능)
+        if len(prod_sales) > 15:
+            prod_sales = prod_sales.tail(15) # ascending=True이므로 tail이 상위 매출
+        
         fig_prod_sales = px.bar(
             prod_sales,
             x='Total Sales',
@@ -343,11 +347,12 @@ with col_chart2:
                     pair_counts[(p1, p2)] = pair_counts.get((p1, p2), 0) + 1
                     pair_counts[(p2, p1)] = pair_counts.get((p2, p1), 0) + 1  # 대칭 행렬 구성
             
-            unique_products = sorted(filtered_df[prod_col].unique())
+            unique_products = sorted(filtered_multi[prod_col].unique()) # [개선] 교차구매가 실제로 발생한 제품 위주로 행렬 구성
             matrix_df = pd.DataFrame(0, index=unique_products, columns=unique_products)
             
             for (p1, p2), count in pair_counts.items():
-                matrix_df.loc[p1, p2] = count
+                if p1 in matrix_df.index and p2 in matrix_df.columns:
+                    matrix_df.loc[p1, p2] = count
 
             # 히트맵 시각화
             fig_cross = px.imshow(
@@ -357,7 +362,8 @@ with col_chart2:
                 y=matrix_df.index,
                 color_continuous_scale="Purples",
                 aspect="auto",
-                title="Product Co-occurrence Matrix"
+                title="Product Co-occurrence Matrix",
+                text_auto=True  # [개선] 교차 구매 수치 히트맵 상에 직접 표기
             )
             fig_cross.update_layout(
                 height=450,
@@ -369,8 +375,6 @@ with col_chart2:
             st.info("💡 동일 주문 내 2개 이상의 서로 다른 제품을 구매한 이력이 없어 교차 구매 히트맵을 생성할 수 없습니다.")
     else:
         st.warning("교차 구매 분석을 위한 식별자(Order/Customer ID) 또는 제품(Product) 컬럼이 부족합니다.")
-
-)
 
 # ---------------------------------------------------------
 # 제품 분석 하단: 상위 Top 5 제품 월별 매출 추이 (Time-Series Line Chart)

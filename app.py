@@ -459,9 +459,7 @@ if cust_cols and date_cols and 'Total Sales' in filtered_df.columns:
 
     st.plotly_chart(fig_scatter, use_container_width=True)
 
-    # ---------------------------------------------------------
     # 6) 세그먼트별 고객 수 vs 매출 기여도 비중 비교 차트
-    # ---------------------------------------------------------
     st.markdown("#### ⚖️ 세그먼트별 고객 수 vs 매출 기여도 비중 비교 (Pareto Analysis)")
 
     segment_summary = rfm_df.groupby('Segment').agg(
@@ -488,6 +486,15 @@ if cust_cols and date_cols and 'Total Sales' in filtered_df.columns:
         'Revenue_Share': '매출 기여도 비중 (%)'
     })
 
+    # X축 범주 순서 정의 (휴면 -> 신규 -> 이탈위험 -> Loyal -> VIP)
+    segment_order = [
+        'Hibernating (휴면 유저)',
+        'New Customers (신규)',
+        'At-Risk (이탈 위험군)',
+        'Loyal Customers',
+        'VIP (Champs)'
+    ]
+
     fig_compare = px.bar(
         comparison_melted,
         x='Segment',
@@ -500,9 +507,14 @@ if cust_cols and date_cols and 'Total Sales' in filtered_df.columns:
         color_discrete_sequence=['#9467bd', '#1f77b4'] # 보라: 고객수, 파랑: 매출
     )
 
+    # X축 범주 정렬 순서 적용 (categoryorder & categoryarray)
     fig_compare.update_layout(
         height=360,
         yaxis=dict(title="비중 (%)", range=[0, 100]),
+        xaxis=dict(
+            categoryorder='array',
+            categoryarray=segment_order
+        ),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         margin=dict(l=10, r=10, t=50, b=10)
     )

@@ -377,9 +377,12 @@ st.info(
     "- **교차 구매 히트맵:** 동시 구매 빈도가 높은 제품 조합(진한 보라색 칸)을 발굴하여 **'함께 많이 찾는 상품' 묶음 할인(Bundle) 구성**이나 **상세페이지 하단 연관 상품 추천 연동**에 활용합니다."
 )
 
+import plotly.express as px
+import pandas as pd
+import streamlit as st
 
 # ---------------------------------------------------------
-# 5. RFM 기반 고객 세분화 분석 (Scatter Plot & Insights)
+# 5. RFM 기반 고객 세분화 분석 (Scatter Plot, Pareto & Insights)
 # ---------------------------------------------------------
 st.markdown("---")
 st.header("🎯 RFM 기반 고객 세분화 분석 (Scatter Plot & Insights)")
@@ -451,53 +454,89 @@ if cust_cols and date_cols and 'Total Sales' in filtered_df.columns:
         xaxis_title="← 최근 구매 (경과일 작음) | 오랫동안 미구매 (경과일 큼) →",
         yaxis_title="총 구매 금액 ($)",
         legend_title="세그먼트 구분",
-        height=520
+        height=480
     )
 
     st.plotly_chart(fig_scatter, use_container_width=True)
 
-    # 6) 세그먼트 요약 집계
-    rfm_summary = rfm_df.groupby('Segment').agg(
+    # ---------------------------------------------------------
+    # 6) 세그먼트별 고객 수 vs 매출 기여도 비중 비교 차트
+    # ---------------------------------------------------------
+    st.markdown("#### ⚖️ 세그먼트별 고객 수 vs 매출 기여도 비중 비교 (Pareto Analysis)")
+
+    segment_summary = rfm_df.groupby('Segment').agg(
         Customer_Count=(cust_col, 'count'),
-        Total_Monetary=('Monetary', 'sum'),
-        Avg_Recency=('Recency', 'mean'),
-        Avg_Frequency=('Frequency', 'mean'),
-        Avg_Monetary=('Monetary', 'mean')
+        Total_Revenue=('Monetary', 'sum')
     ).reset_index()
 
-    total_cust = rfm_summary['Customer_Count'].sum()
-    total_rev = rfm_summary['Total_Monetary'].sum()
+    total_customers = segment_summary['Customer_Count'].sum()
+    total_revenue = segment_summary['Total_Revenue'].sum()
 
-    rfm_summary['Cust_Share'] = (rfm_summary['Customer_Count'] / total_cust) * 100
-    rfm_summary['Revenue_Share'] = (rfm_summary['Total_Monetary'] / total_rev) * 100
+    segment_summary['Customer_Share'] = (segment_summary['Customer_Count'] / total_customers) * 100
+    segment_summary['Revenue_Share'] = (segment_summary['Total_Revenue'] / total_revenue) * 100
 
-    # 7) 주요 데이터 인사이트 자동 추출 (Dynamic Insights)
-    at_risk_row = rfm_summary[rfm_summary['Segment'] == 'At-Risk (이탈 위험군)']
-    vip_row = rfm_summary[rfm_summary['Segment'] == 'VIP (Champs)']
+    # Grouped Bar Melt 변환
+    comparison_melted = segment_summary.melt(
+        id_vars=['Segment'],
+        value_vars=['Customer_Share', 'Revenue_Share'],
+        var_name='Metric',
+        value_name='Percentage'
+    )
+
+    comparison_melted['Metric'] = comparison_melted['Metric'].map({
+        'Customer_Share': '고객 수 비중 (%)',
+        'Revenue_Share': '매출 기여도 비중 (%)'
+    })
+
+    fig_compare = px.bar(
+        comparison_melted,
+        x='Segment',
+        y='Percentage',
+        color='Metric',
+        barmode='group',
+        title='Customer Share vs Revenue Share by Segment',
+        labels={'Segment': '고객 세그먼트', 'Percentage': '비중 (%)', 'Metric': '구분'},
+        text_auto='.1f',
+        color_discrete_sequence=['#9467bd', '#1f77b4'] # 보라: 고객수, 파랑: 매출
+    )
+
+    fig_compare.update_layout(
+        height=360,
+        yaxis=dict(title="비중 (%)", range=[0, 100]),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(l=10, r=10, t=50, b=10)
+    )
+
+    st.plotly_chart(fig_compare, use_container_width=True)
+
+    # ---------------------------------------------------------
+    # 7) 동적 인사이트 및 세그먼트별 마케팅 액션 플랜
+    # ---------------------------------------------------------
+    at_risk_row = segment_summary[segment_summary['Segment'] == 'At-Risk (이탈 위험군)']
+    vip_row = segment_summary[segment_summary['Segment'] == 'VIP (Champs)']
 
     at_risk_rev_share = at_risk_row['Revenue_Share'].values[0] if not at_risk_row.empty else 0
     at_risk_cust_cnt = at_risk_row['Customer_Count'].values[0] if not at_risk_row.empty else 0
     vip_rev_share = vip_row['Revenue_Share'].values[0] if not vip_row.empty else 0
 
-    # === Insights 영역 출력 ===
-    st.subheader("💡 Key Insights & Marketing Strategy")
+    st.subheader("💡 Key Insights & Target Marketing Strategy")
 
     col_ins1, col_ins2 = st.columns(2)
 
     with col_ins1:
         st.markdown(f"""
         <div style="background-color: #f8f9fa; padding: 18px; border-radius: 8px; border-left: 5px solid #d62728; margin-bottom: 15px;">
-            <h4 style="margin-0; color: #d62728;">🚨 이탈 위험군 (At-Risk) 긴급 대응 필요</h4>
+            <h4 style="margin: 0; color: #d62728;">🚨 이탈 위험군 (At-Risk) 긴급 대응 필요</h4>
             <p style="font-size: 14px; margin-top: 8px; color: #333;">
-                • <b>매출 방어 관점:</b> 과거 구매 기여도가 높았으나 최근 구매가 끊긴 <b>At-Risk 그룹이 전체 매출의 {at_risk_rev_share:.1f}%</b>를 차지합니다.<br>
-                • <b>액션 플랜:</b> {at_risk_cust_cnt:,}명의 이탈 위험 유저를 대상으로 <b>"복귀 전용 할인 쿠폰" 및 맞춤형 상품 재추천 CRM 메시지</b>를 발송하여 리텐션을 회복해야 합니다.
+                • <b>매출 방어 관점:</b> 과거 기여도가 높았으나 최근 방문이 끊긴 <b>At-Risk 그룹이 전체 매출의 {at_risk_rev_share:.1f}%</b>를 차지합니다.<br>
+                • <b>액션 플랜:</b> {at_risk_cust_cnt:,}명의 유저를 대상으로 <b>"복귀 전용 할인 쿠폰" 및 연관 상품 재추천 CRM 메시지</b>를 발송하여 리텐션을 회복해야 합니다.
             </p>
         </div>
         """, unsafe_allow_html=True)
 
         st.markdown(f"""
         <div style="background-color: #f8f9fa; padding: 18px; border-radius: 8px; border-left: 5px solid #1f77b4; margin-bottom: 15px;">
-            <h4 style="margin-0; color: #1f77b4;">👑 VIP & Loyal 유저 매출 락인(Lock-in)</h4>
+            <h4 style="margin: 0; color: #1f77b4;">👑 VIP & Loyal 유저 매출 락인(Lock-in)</h4>
             <p style="font-size: 14px; margin-top: 8px; color: #333;">
                 • <b>매출 집중도:</b> VIP 유저군이 전체 매출의 <b>{vip_rev_share:.1f}%</b>를 견인하는 핵심 자산입니다.<br>
                 • <b>액션 플랜:</b> 신제품 우선 체험권, VIP 전용 무료 배송 및 리워드 프로그램 강화를 통해 타사 이탈을 방지합니다.
@@ -508,7 +547,7 @@ if cust_cols and date_cols and 'Total Sales' in filtered_df.columns:
     with col_ins2:
         st.markdown("""
         <div style="background-color: #f8f9fa; padding: 18px; border-radius: 8px; border-left: 5px solid #ff7f0e; margin-bottom: 15px;">
-            <h4 style="margin-0; color: #ff7f0e;">🌱 New Customers 2차 구매 유도</h4>
+            <h4 style="margin: 0; color: #ff7f0e;">🌱 New Customers 2차 구매 유도</h4>
             <p style="font-size: 14px; margin-top: 8px; color: #333;">
                 • <b>전환 관점:</b> 최근 신규 유입된 유저들은 1회 구매에 그칠 가능성이 높습니다.<br>
                 • <b>액션 플랜:</b> 첫 구매 후 7일 이내 사용 가능한 <b>"2차 구매 웰컴 혜택" 및 온보딩 모바일 푸시</b>로 LTV(고객 생애 가치)를 극대화해야 합니다.
@@ -518,7 +557,7 @@ if cust_cols and date_cols and 'Total Sales' in filtered_df.columns:
 
         st.markdown("""
         <div style="background-color: #f8f9fa; padding: 18px; border-radius: 8px; border-left: 5px solid #7f7f7f; margin-bottom: 15px;">
-            <h4 style="margin-0; color: #555;">💤 휴면 유저 (Hibernating) 비용 효율화</h4>
+            <h4 style="margin: 0; color: #555;">💤 휴면 유저 (Hibernating) 비용 효율화</h4>
             <p style="font-size: 14px; margin-top: 8px; color: #333;">
                 • <b>비용 관리:</b> 오래전 소액 구매 후 반응이 없는 유저층입니다.<br>
                 • <b>액션 플랜:</b> 무분별한 유상 타깃 마케팅을 지양하고, 대형 시즌 프로모션(예: 블랙프라이데이) 때만 제한적으로 재활성화 메일을 발송합니다.
@@ -526,10 +565,24 @@ if cust_cols and date_cols and 'Total Sales' in filtered_df.columns:
         </div>
         """, unsafe_allow_html=True)
 
-    # 세그먼트별 요약 표
-    with st.expander("📋 세그먼트별 상세 데이터표 확인하기"):
-        display_rfm = rfm_summary[['Segment', 'Customer_Count', 'Cust_Share', 'Total_Monetary', 'Revenue_Share', 'Avg_Recency', 'Avg_Frequency', 'Avg_Monetary']].copy()
+    # ---------------------------------------------------------
+    # 8) 세그먼트별 상세 데이터표 (Expander)
+    # ---------------------------------------------------------
+    with st.expander("📋 세그먼트별 상세 지표 데이터표 확인하기"):
+        display_rfm = rfm_df.groupby('Segment').agg(
+            Customer_Count=(cust_col, 'count'),
+            Total_Monetary=('Monetary', 'sum'),
+            Avg_Recency=('Recency', 'mean'),
+            Avg_Frequency=('Frequency', 'mean'),
+            Avg_Monetary=('Monetary', 'mean')
+        ).reset_index()
+
+        display_rfm['Cust_Share (%)'] = (display_rfm['Customer_Count'] / total_customers) * 100
+        display_rfm['Revenue_Share (%)'] = (display_rfm['Total_Monetary'] / total_revenue) * 100
+
+        display_rfm = display_rfm[['Segment', 'Customer_Count', 'Cust_Share (%)', 'Total_Monetary', 'Revenue_Share (%)', 'Avg_Recency', 'Avg_Frequency', 'Avg_Monetary']]
         display_rfm.columns = ['세그먼트', '고객수(명)', '고객비중(%)', '총매출($)', '매출점유율(%)', '평균최근성(일)', '평균구매(회)', '평균구매액($)']
+
         st.dataframe(
             display_rfm.style.format({
                 '고객수(명)': '{:,}',

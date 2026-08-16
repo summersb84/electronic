@@ -1,52 +1,59 @@
-import streamlit as st
+import itertools
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import numpy as np
-import itertools
-
+import streamlit as st
 
 # 1. 페이지 기본 설정
 st.set_page_config(
-    page_title="Electronic Sales Dashboard",
-    page_icon="📊",
-    layout="wide"
+    page_title="Electronic Sales Dashboard", page_icon="📊", layout="wide"
 )
+
 
 # 2. 데이터 로드 및 전처리 함수
 @st.cache_data
 def load_and_preprocess_data(file_path):
     df = pd.read_csv(file_path)
     df.columns = df.columns.str.strip()
-    
-    date_col = [col for col in df.columns if 'date' in col.lower()]
+
+    date_col = [col for col in df.columns if "date" in col.lower()]
     if date_col:
-        df[date_col[0]] = pd.to_datetime(df[date_col[0]], errors='coerce')
-        df['YearMonth'] = df[date_col[0]].dt.to_period('M').astype(str)
-        df['Month'] = df[date_col[0]].dt.month
-        df['DayOfWeek'] = df[date_col[0]].dt.day_name()
-    
+        df[date_col[0]] = pd.to_datetime(df[date_col[0]], errors="coerce")
+        df["YearMonth"] = df[date_col[0]].dt.to_period("M").astype(str)
+        df["Month"] = df[date_col[0]].dt.month
+        df["DayOfWeek"] = df[date_col[0]].dt.day_name()
+
     cols_lower = {col.lower(): col for col in df.columns}
-    if 'total price' not in cols_lower and 'total_amount' not in cols_lower:
-        price_col = [c for c in df.columns if 'price' in c.lower()]
-        qty_col = [c for c in df.columns if 'quantity' in c.lower() or 'qty' in c.lower()]
+    if "total price" not in cols_lower and "total_amount" not in cols_lower:
+        price_col = [c for c in df.columns if "price" in c.lower()]
+        qty_col = [
+            c
+            for c in df.columns
+            if "quantity" in c.lower() or "qty" in c.lower()
+        ]
         if price_col and qty_col:
-            df['Total Sales'] = df[price_col[0]] * df[qty_col[0]]
+            df["Total Sales"] = df[price_col[0]] * df[qty_col[0]]
     else:
-        sales_col = cols_lower.get('total price') or cols_lower.get('total_amount')
-        df['Total Sales'] = df[sales_col]
-        
-    df = df.dropna(subset=['Total Sales'])
+        sales_col = cols_lower.get("total price") or cols_lower.get(
+            "total_amount"
+        )
+        df["Total Sales"] = df[sales_col]
+
+    df = df.dropna(subset=["Total Sales"])
     return df
 
+
 # 지정하신 데이터 파일명 적용
-DATA_PATH = "Electronic_sales_Sep2023-Sep2024.csv" 
+DATA_PATH = "Electronic_sales_Sep2023-Sep2024.csv"
 
 try:
     df = load_and_preprocess_data(DATA_PATH)
 except Exception as e:
-    st.error(f"데이터 파일('{DATA_PATH}')을 로드하는 중 오류가 발생했습니다. 저장소에 파일이 존재하는지 확인해 주세요.")
+    st.error(
+        f"데이터 파일('{DATA_PATH}')을 로드하는 중 오류가 발생했습니다. 저장소에 파일이 존재하는지 확인해 주세요."
+    )
     st.stop()
 
 # ---------------------------------------------------------
@@ -54,7 +61,7 @@ except Exception as e:
 # ---------------------------------------------------------
 st.sidebar.header("🔍 데이터 필터")
 
-date_cols = [col for col in df.columns if 'date' in col.lower()]
+date_cols = [col for col in df.columns if "date" in col.lower()]
 date_col_name = date_cols[0] if date_cols else None
 
 if date_col_name and pd.api.types.is_datetime64_any_dtype(df[date_col_name]):
@@ -65,14 +72,17 @@ if date_col_name and pd.api.types.is_datetime64_any_dtype(df[date_col_name]):
         "📅 조회 기간 선택",
         value=(min_date, max_date),
         min_value=min_date,
-        max_value=max_date
+        max_value=max_date,
     )
 
-    if isinstance(selected_date_range, tuple) and len(selected_date_range) == 2:
+    if (
+        isinstance(selected_date_range, tuple)
+        and len(selected_date_range) == 2
+    ):
         start_date, end_date = selected_date_range
         filtered_df = df[
-            (df[date_col_name].dt.date >= start_date) & 
-            (df[date_col_name].dt.date <= end_date)
+            (df[date_col_name].dt.date >= start_date)
+            & (df[date_col_name].dt.date <= end_date)
         ]
     else:
         filtered_df = df.copy()
@@ -95,22 +105,30 @@ else:
 st.markdown("---")
 
 # 고객 ID 컬럼 탐색
-user_cols = [c for c in filtered_df.columns if 'customer' in c.lower() or 'user' in c.lower() or 'client' in c.lower()]
+user_cols = [
+    c
+    for c in filtered_df.columns
+    if "customer" in c.lower() or "user" in c.lower() or "client" in c.lower()
+]
 cust_col = user_cols[0] if user_cols else None
 
 # === KPI 주요 지표 계산 ===
-total_revenue = filtered_df['Total Sales'].sum()
+total_revenue = filtered_df["Total Sales"].sum()
 total_orders = len(filtered_df)
 avg_order_value = total_revenue / total_orders if total_orders > 0 else 0
 
 if cust_col and cust_col in filtered_df.columns:
     total_customers = filtered_df[cust_col].nunique()
-    arpu = total_revenue / total_customers if total_customers > 0 else 0  # 인당 객단가
-    
+    arpu = (
+        total_revenue / total_customers if total_customers > 0 else 0
+    )  # 인당 객단가
+
     # 재구매율 계산 (2회 이상 구매 고객 비율)
     order_counts_per_cust = filtered_df.groupby(cust_col).size()
     repeat_customers = (order_counts_per_cust >= 2).sum()
-    repeat_rate = (repeat_customers / total_customers * 100) if total_customers > 0 else 0
+    repeat_rate = (
+        (repeat_customers / total_customers * 100) if total_customers > 0 else 0
+    )
 else:
     total_customers = 0
     arpu = 0
@@ -122,28 +140,30 @@ kpi_col1.metric("총 매출액 (Total Revenue)", f"${total_revenue:,.2f}")
 kpi_col2.metric("총 주문 건수 (Total Orders)", f"{total_orders:,} 건")
 kpi_col3.metric("평균 주문 금액 (건당)", f"${avg_order_value:,.2f}")
 
-st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True) # 줄간격 여백
+st.markdown(
+    "<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True
+)  # 줄간격 여백
 
 # === KPI Row 2: 고객 관점 지표 ===
 kpi_col4, kpi_col5, kpi_col6 = st.columns(3)
 
 if cust_col:
     kpi_col4.metric(
-        label="총 주문 고객수 (Total Customers)", 
+        label="총 주문 고객수 (Total Customers)",
         value=f"{total_customers:,} 명",
-        help="선택된 집계 기간 동안 1회 이상 구매 이력이 있는 고유 고객(Customer ID 기준) 수입니다."
+        help="선택된 집계 기간 동안 1회 이상 구매 이력이 있는 고유 고객(Customer ID 기준) 수입니다.",
     )
-    
+
     kpi_col5.metric(
-        label="인당 객단가 (ARPU)", 
+        label="인당 객단가 (ARPU)",
         value=f"${arpu:,.2f}",
-        help="고객 1인당 평균 결제 금액입니다. (산출식: 총 매출액 ÷ 총 주문 고객수)"
+        help="고객 1인당 평균 결제 금액입니다. (산출식: 총 매출액 ÷ 총 주문 고객수)",
     )
-    
+
     kpi_col6.metric(
-        label="재구매율 (Repeat Purchase Rate)", 
+        label="재구매율 (Repeat Purchase Rate)",
         value=f"{repeat_rate:.1f}%",
-        help="전체 구매 고객 중 2회 이상 주문한 고객의 비중입니다. (산출식: 2회 이상 주문 고객수 ÷ 총 주문 고객수 × 100)"
+        help="전체 구매 고객 중 2회 이상 주문한 고객의 비중입니다. (산출식: 2회 이상 주문 고객수 ÷ 총 주문 고객수 × 100)",
     )
 else:
     kpi_col4.metric("총 주문 고객수", "N/A")
@@ -169,17 +189,27 @@ col_left, col_right = st.columns([1.2, 0.8])
 # === [좌측 컬럼] 통합 월별 매출 및 구매자 추이 ===
 with col_left:
     st.subheader("📈 월별 매출 및 구매자 추이 (통합)")
-    
-    user_cols = [c for c in filtered_df.columns if 'customer' in c.lower() or 'user' in c.lower() or 'client' in c.lower()]
-    
-    if 'YearMonth' in filtered_df.columns and user_cols:
+
+    user_cols = [
+        c
+        for c in filtered_df.columns
+        if "customer" in c.lower()
+        or "user" in c.lower()
+        or "client" in c.lower()
+    ]
+
+    if "YearMonth" in filtered_df.columns and user_cols:
         cust_col = user_cols[0]
-        
+
         # 월별 매출 및 구매자 수 데이터 집계
-        monthly_df = filtered_df.groupby('YearMonth').agg(
-            Sales=('Total Sales', 'sum'),
-            Active_Users=(cust_col, 'nunique')
-        ).reset_index()
+        monthly_df = (
+            filtered_df.groupby("YearMonth")
+            .agg(
+                Sales=("Total Sales", "sum"),
+                Active_Users=(cust_col, "nunique"),
+            )
+            .reset_index()
+        )
 
         # 이중 축(Secondary Y-axis) 그래프 생성
         fig_combined = make_subplots(specs=[[{"secondary_y": True}]])
@@ -187,44 +217,54 @@ with col_left:
         # 1) 매출액 (좌측 Y축 - 막대 그래프)
         fig_combined.add_trace(
             go.Bar(
-                x=monthly_df['YearMonth'],
-                y=monthly_df['Sales'],
+                x=monthly_df["YearMonth"],
+                y=monthly_df["Sales"],
                 name="매출액 ($)",
-                marker_color='#636EFA',
-                opacity=0.75
+                marker_color="#636EFA",
+                opacity=0.75,
             ),
-            secondary_y=False
+            secondary_y=False,
         )
 
         # 2) 구매자 수 (우측 Y축 - 꺾은선 그래프)
         fig_combined.add_trace(
             go.Scatter(
-                x=monthly_df['YearMonth'],
-                y=monthly_df['Active_Users'],
+                x=monthly_df["YearMonth"],
+                y=monthly_df["Active_Users"],
                 name="구매자 수 (명)",
                 mode="lines+markers",
-                line=dict(color='#EF553B', width=3),
-                marker=dict(size=7)
+                line=dict(color="#EF553B", width=3),
+                marker=dict(size=7),
             ),
-            secondary_y=True
+            secondary_y=True,
         )
 
         # 축 레이블 및 레이아웃 설정
         fig_combined.update_layout(
             title_text="Monthly Revenue & Active Customers Trend",
             hovermode="x unified",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1,
+            ),
         )
-        fig_combined.update_yaxes(title_text="<b>매출액 ($)</b>", secondary_y=False)
-        fig_combined.update_yaxes(title_text="<b>구매자 수 (명)</b>", secondary_y=True)
+        fig_combined.update_yaxes(
+            title_text="<b>매출액 ($)</b>", secondary_y=False
+        )
+        fig_combined.update_yaxes(
+            title_text="<b>구매자 수 (명)</b>", secondary_y=True
+        )
 
         st.plotly_chart(fig_combined, use_container_width=True)
 
         # --- 인사이트 섹션 ---
         if not monthly_df.empty:
-            max_sales_row = monthly_df.loc[monthly_df['Sales'].idxmax()]
-            max_users_row = monthly_df.loc[monthly_df['Active_Users'].idxmax()]
-            
+            max_sales_row = monthly_df.loc[monthly_df["Sales"].idxmax()]
+            max_users_row = monthly_df.loc[monthly_df["Active_Users"].idxmax()]
+
             st.info(
                 f"💡 **월별 추이 인사이트**\n"
                 f"- **최고 매출 달성 월:** {max_sales_row['YearMonth']} (${max_sales_row['Sales']:,.2f})\n"
@@ -237,31 +277,44 @@ with col_left:
 # === [우측 컬럼] Loyalty Member 구분별 지표 ===
 with col_right:
     st.subheader("👑 Loyalty Member 구분별 지표")
-    
-    loyalty_cols = [c for c in filtered_df.columns if 'loyalty' in c.lower() or 'member' in c.lower()]
-    
+
+    loyalty_cols = [
+        c
+        for c in filtered_df.columns
+        if "loyalty" in c.lower() or "member" in c.lower()
+    ]
+
     if loyalty_cols:
         loyalty_col = loyalty_cols[0]
-        loyalty_summary = filtered_df.groupby(loyalty_col).agg(
-            Total_Sales=('Total Sales', 'sum'),
-            Order_Count=('Total Sales', 'count')
-        ).reset_index()
+        loyalty_summary = (
+            filtered_df.groupby(loyalty_col)
+            .agg(
+                Total_Sales=("Total Sales", "sum"),
+                Order_Count=("Total Sales", "count"),
+            )
+            .reset_index()
+        )
 
         fig_loyalty = px.pie(
             loyalty_summary,
             names=loyalty_col,
-            values='Total_Sales',
+            values="Total_Sales",
             hole=0.4,
             title=f"Sales Share by {loyalty_col}",
-            color_discrete_sequence=px.colors.qualitative.Set2
+            color_discrete_sequence=px.colors.qualitative.Set2,
         )
         st.plotly_chart(fig_loyalty, use_container_width=True)
 
         # --- 인사이트 섹션 ---
         if not loyalty_summary.empty:
-            loyalty_summary['Sales_Share'] = (loyalty_summary['Total_Sales'] / loyalty_summary['Total_Sales'].sum()) * 100
-            top_member = loyalty_summary.loc[loyalty_summary['Total_Sales'].idxmax()]
-            
+            loyalty_summary["Sales_Share"] = (
+                loyalty_summary["Total_Sales"]
+                / loyalty_summary["Total_Sales"].sum()
+            ) * 100
+            top_member = loyalty_summary.loc[
+                loyalty_summary["Total_Sales"].idxmax()
+            ]
+
             st.info(
                 f"💡 **Loyalty 인사이트**\n"
                 f"- **최대 매출 기여 그룹:** '{top_member[loyalty_col]}' ({top_member['Sales_Share']:.1f}% 점유)\n"
@@ -275,140 +328,177 @@ st.markdown("---")
 # ---------------------------------------------------------
 # 4. 제품별 매출 및 제품 교차 구매(Cross-selling) 분석
 # ---------------------------------------------------------
-st.markdown("---")
 st.header("📦 제품별 매출 및 교차 구매 분석 (Product Sales & Cross-Selling)")
 
-# 컬럼 자동 매핑
-prod_cols = [c for c in filtered_df.columns if 'product' in c.lower() or 'item' in c.lower() or 'goods' in c.lower()]
-order_cols = [c for c in filtered_df.columns if 'order' in c.lower() or 'invoice' in c.lower() or 'transaction' in c.lower()]
-cust_cols = [c for c in filtered_df.columns if 'customer' in c.lower() or 'user' in c.lower()]
+prod_cols = [
+    c
+    for c in filtered_df.columns
+    if "product" in c.lower() or "item" in c.lower() or "goods" in c.lower()
+]
+order_cols = [
+    c
+    for c in filtered_df.columns
+    if "order" in c.lower()
+    or "invoice" in c.lower()
+    or "transaction" in c.lower()
+]
+cust_cols = [
+    c
+    for c in filtered_df.columns
+    if "customer" in c.lower() or "user" in c.lower()
+]
 
 prod_col = prod_cols[0] if prod_cols else None
-order_col = order_cols[0] if order_cols else (cust_cols[0] if cust_cols else None)
+order_col = (
+    order_cols[0] if order_cols else (cust_cols[0] if cust_cols else None)
+)
 
 col_chart1, col_chart2 = st.columns(2)
 
 # === 1) 제품별 매출 분석 (Bar Chart) ===
 with col_chart1:
     st.subheader("📊 제품별 매출 순위 (Product Sales)")
-    if prod_col and 'Total Sales' in filtered_df.columns:
+    if prod_col and "Total Sales" in filtered_df.columns:
         prod_sales = (
-            filtered_df.groupby(prod_col)['Total Sales']
+            filtered_df.groupby(prod_col)["Total Sales"]
             .sum()
             .reset_index()
-            .sort_values(by='Total Sales', ascending=True)  # 가로 막대 그래프용 정렬
+            .sort_values(by="Total Sales", ascending=True)
         )
-        
-        # [개선] 제품이 너무 많을 경우 가독성을 위해 상위 15개만 슬라이싱 (필요시 조정 가능)
+
         if len(prod_sales) > 15:
-            prod_sales = prod_sales.tail(15) # ascending=True이므로 tail이 상위 매출
-        
+            prod_sales = prod_sales.tail(15)
+
         fig_prod_sales = px.bar(
             prod_sales,
-            x='Total Sales',
+            x="Total Sales",
             y=prod_col,
-            orientation='h',
-            title='Top Selling Products by Revenue',
-            labels={'Total Sales': '총 매출액 ($)', prod_col: '제품명'},
-            text_auto=',.0f',
-            color='Total Sales',
-            color_continuous_scale='Blues'
+            orientation="h",
+            title="Top Selling Products by Revenue",
+            labels={"Total Sales": "총 매출액 ($)", prod_col: "제품명"},
+            text_auto=",.0f",
+            color="Total Sales",
+            color_continuous_scale="Blues",
         )
         fig_prod_sales.update_layout(
             coloraxis_showscale=False,
             height=450,
-            margin=dict(l=10, r=10, t=40, b=10)
+            margin=dict(l=10, r=10, t=40, b=10),
         )
         st.plotly_chart(fig_prod_sales, use_container_width=True)
     else:
-        st.warning("제품명(Product) 및 매출(Total Sales) 컬럼을 찾을 수 없습니다.")
+        st.warning(
+            "제품명(Product) 및 매출(Total Sales) 컬럼을 찾을 수 없습니다."
+        )
 
 # === 2) 제품 교차 구매 분석 (Cross-Selling Heatmap) ===
 with col_chart2:
     st.subheader("🔄 제품 간 교차 구매 빈도 (Cross-Selling)")
     if prod_col and order_col:
-        # 동일 주문/고객 내 중복 제품 제거
         order_prod_df = filtered_df[[order_col, prod_col]].drop_duplicates()
-        
-        # 2개 이상 구매한 주문만 필터링
+
         order_counts = order_prod_df.groupby(order_col)[prod_col].nunique()
         multi_item_orders = order_counts[order_counts > 1].index
-        filtered_multi = order_prod_df[order_prod_df[order_col].isin(multi_item_orders)]
-        
+        filtered_multi = order_prod_df[
+            order_prod_df[order_col].isin(multi_item_orders)
+        ]
+
         if not filtered_multi.empty:
-            # 주문별 제품 리스트 집계
-            grouped_orders = filtered_multi.groupby(order_col)[prod_col].apply(list)
-            
-            # 동시 구매 조합(Co-occurrence) 빈도 계산
+            grouped_orders = filtered_multi.groupby(order_col)[prod_col].apply(
+                list
+            )
+
             pair_counts = {}
             for items in grouped_orders:
-                # 주문 내 존재하는 모든 2개 제품 조합 쌍 생성
                 for p1, p2 in itertools.combinations(sorted(set(items)), 2):
                     pair_counts[(p1, p2)] = pair_counts.get((p1, p2), 0) + 1
-                    pair_counts[(p2, p1)] = pair_counts.get((p2, p1), 0) + 1  # 대칭 행렬 구성
-            
-            unique_products = sorted(filtered_multi[prod_col].unique()) # [개선] 교차구매가 실제로 발생한 제품 위주로 행렬 구성
-            matrix_df = pd.DataFrame(0, index=unique_products, columns=unique_products)
-            
+                    pair_counts[(p2, p1)] = pair_counts.get((p2, p1), 0) + 1
+
+            unique_products = sorted(filtered_multi[prod_col].unique())
+            matrix_df = pd.DataFrame(
+                0, index=unique_products, columns=unique_products
+            )
+
             for (p1, p2), count in pair_counts.items():
                 if p1 in matrix_df.index and p2 in matrix_df.columns:
                     matrix_df.loc[p1, p2] = count
 
-            # 히트맵 시각화
             fig_cross = px.imshow(
                 matrix_df,
-                labels=dict(x="함께 구매된 제품 B", y="기준 제품 A", color="동시 구매 건수"),
+                labels=dict(
+                    x="함께 구매된 제품 B",
+                    y="기준 제품 A",
+                    color="동시 구매 건수",
+                ),
                 x=matrix_df.columns,
                 y=matrix_df.index,
                 color_continuous_scale="Purples",
                 aspect="auto",
                 title="Product Co-occurrence Matrix",
-                text_auto=True  # [개선] 교차 구매 수치 히트맵 상에 직접 표기
+                text_auto=True,
             )
             fig_cross.update_layout(
-                height=450,
-                margin=dict(l=10, r=10, t=40, b=10)
+                height=450, margin=dict(l=10, r=10, t=40, b=10)
             )
             st.plotly_chart(fig_cross, use_container_width=True)
-            
+
         else:
-            st.info("💡 동일 주문 내 2개 이상의 서로 다른 제품을 구매한 이력이 없어 교차 구매 히트맵을 생성할 수 없습니다.")
+            st.info(
+                "💡 동일 주문 내 2개 이상의 서로 다른 제품을 구매한 이력이 없어 교차 구매 히트맵을 생성할 수 없습니다."
+            )
     else:
-        st.warning("교차 구매 분석을 위한 식별자(Order/Customer ID) 또는 제품(Product) 컬럼이 부족합니다.")
+        st.warning(
+            "교차 구매 분석을 위한 식별자(Order/Customer ID) 또는 제품(Product) 컬럼이 부족합니다."
+        )
 
 # ---------------------------------------------------------
 # 제품 분석 하단: 상위 Top 5 제품 월별 매출 추이 (Time-Series Line Chart)
 # ---------------------------------------------------------
 st.markdown("---")
-st.markdown("#### 📈 상위 Top 5 제품 월별 매출 추이 (Product Monthly Revenue Trend)")
+st.markdown(
+    "#### 📈 상위 Top 5 제품 월별 매출 추이 (Product Monthly Revenue Trend)"
+)
 
-date_cols = [c for c in filtered_df.columns if 'date' in c.lower()]
-prod_cols = [c for c in filtered_df.columns if 'prod' in c.lower() or 'item' in c.lower() or 'name' in c.lower()]
+date_cols = [c for c in filtered_df.columns if "date" in c.lower()]
+prod_cols = [
+    c
+    for c in filtered_df.columns
+    if "prod" in c.lower() or "item" in c.lower() or "name" in c.lower()
+]
 
-if date_cols and prod_cols and 'Total Sales' in filtered_df.columns:
+if date_cols and prod_cols and "Total Sales" in filtered_df.columns:
     date_col = date_cols[0]
     prod_col = prod_cols[0]
 
-    # 1) 데이터 복사 및 연-월(YYYY-MM) 컬럼 생성
     ts_df = filtered_df.copy()
-    ts_df['YearMonth'] = ts_df[date_col].dt.to_period('M').astype(str)
+    ts_df["YearMonth"] = ts_df[date_col].dt.to_period("M").astype(str)
 
-    # 2) 전체 기간 기준 매출 Top 5 제품 추출
-    top5_products = ts_df.groupby(prod_col)['Total Sales'].sum().nlargest(5).index.tolist()
+    top5_products = (
+        ts_df.groupby(prod_col)["Total Sales"]
+        .sum()
+        .nlargest(5)
+        .index.tolist()
+    )
 
-    # 3) Top 5 제품 대상 월별 매출 집계
     ts_top5 = ts_df[ts_df[prod_col].isin(top5_products)]
-    monthly_trend = ts_top5.groupby(['YearMonth', prod_col])['Total Sales'].sum().reset_index()
+    monthly_trend = (
+        ts_top5.groupby(["YearMonth", prod_col])["Total Sales"]
+        .sum()
+        .reset_index()
+    )
 
-    # 4) Line Chart 생성
     fig_line = px.line(
         monthly_trend,
-        x='YearMonth',
-        y='Total Sales',
+        x="YearMonth",
+        y="Total Sales",
         color=prod_col,
         markers=True,
-        title='Monthly Sales Trend for Top 5 Products',
-        labels={'YearMonth': '연월 (Year-Month)', 'Total Sales': '매출액 ($)', prod_col: '제품명'}
+        title="Monthly Sales Trend for Top 5 Products",
+        labels={
+            "YearMonth": "연월 (Year-Month)",
+            "Total Sales": "매출액 ($)",
+            prod_col: "제품명",
+        },
     )
 
     fig_line.update_layout(
@@ -416,18 +506,15 @@ if date_cols and prod_cols and 'Total Sales' in filtered_df.columns:
         xaxis_title="연월",
         yaxis_title="총 매출액 ($)",
         legend_title="상위 제품명",
-        margin=dict(l=10, r=10, t=50, b=10)
+        margin=dict(l=10, r=10, t=50, b=10),
     )
 
     st.plotly_chart(fig_line, use_container_width=True)
 
 else:
-    st.warning("시계열 분석을 위한 날짜(Date), 제품명, 매출액 컬럼을 찾을 수 없습니다.")
-)
-
-import plotly.express as px
-import pandas as pd
-import streamlit as st
+    st.warning(
+        "시계열 분석을 위한 날짜(Date), 제품명, 매출액 컬럼을 찾을 수 없습니다."
+    )
 
 # ---------------------------------------------------------
 # 5. RFM 기반 고객 세분화 분석 (Scatter Plot, Pareto & Insights)
@@ -435,138 +522,153 @@ import streamlit as st
 st.markdown("---")
 st.header("🎯 RFM 기반 고객 세분화 분석 (Scatter Plot & Insights)")
 
-cust_cols = [c for c in filtered_df.columns if 'customer' in c.lower() or 'user' in c.lower() or 'client' in c.lower()]
-date_cols = [c for c in filtered_df.columns if 'date' in c.lower()]
+cust_cols = [
+    c
+    for c in filtered_df.columns
+    if "customer" in c.lower() or "user" in c.lower() or "client" in c.lower()
+]
+date_cols = [c for c in filtered_df.columns if "date" in c.lower()]
 
-if cust_cols and date_cols and 'Total Sales' in filtered_df.columns:
+if cust_cols and date_cols and "Total Sales" in filtered_df.columns:
     cust_col = cust_cols[0]
     date_col = date_cols[0]
-    
-    # 1) 기준일 설정 (데이터 내 최신 날짜 + 1일)
+
     max_date = filtered_df[date_col].max() + pd.Timedelta(days=1)
-    
-    # 2) 고객별 R, F, M 지표 집계
-    rfm_df = filtered_df.groupby(cust_col).agg(
-        Recency=(date_col, lambda x: (max_date - x.max()).days),
-        Frequency=(date_col, 'count'),
-        Monetary=('Total Sales', 'sum')
-    ).reset_index()
 
-    # 3) RFM 점수화 (1~5점 스코어링)
-    rfm_df['R_Score'] = pd.qcut(rfm_df['Recency'], q=5, labels=[5, 4, 3, 2, 1], duplicates='drop').astype(int)
-    rfm_df['F_Score'] = pd.cut(rfm_df['Frequency'], bins=5, labels=[1, 2, 3, 4, 5], duplicates='drop').astype(int)
-    rfm_df['M_Score'] = pd.qcut(rfm_df['Monetary'], q=5, labels=[1, 2, 3, 4, 5], duplicates='drop').astype(int)
+    rfm_df = (
+        filtered_df.groupby(cust_col)
+        .agg(
+            Recency=(date_col, lambda x: (max_date - x.max()).days),
+            Frequency=(date_col, "count"),
+            Monetary=("Total Sales", "sum"),
+        )
+        .reset_index()
+    )
 
-    # 4) 세그먼트 규칙 정의 (이탈 위험군 조건 완화 적용)
+    rfm_df["R_Score"] = pd.qcut(
+        rfm_df["Recency"], q=5, labels=[5, 4, 3, 2, 1], duplicates="drop"
+    ).astype(int)
+    rfm_df["F_Score"] = pd.cut(
+        rfm_df["Frequency"], bins=5, labels=[1, 2, 3, 4, 5], duplicates="drop"
+    ).astype(int)
+    rfm_df["M_Score"] = pd.qcut(
+        rfm_df["Monetary"], q=5, labels=[1, 2, 3, 4, 5], duplicates="drop"
+    ).astype(int)
+
     def segment_customer(df):
-        r, f, m = df['R_Score'], df['F_Score'], df['M_Score']
-        
+        r, f, m = df["R_Score"], df["F_Score"], df["M_Score"]
+
         if r >= 4 and f >= 4 and m >= 4:
-            return 'VIP (Champs)'
+            return "VIP (Champs)"
         elif r >= 3 and (f >= 3 or m >= 3):
-            return 'Loyal Customers'
-        # [수정] R_Score가 낮고(이탈 가능성), F 또는 M 중 하나라도 높았던 유저를 At-Risk로 분류
+            return "Loyal Customers"
         elif r <= 2 and (f >= 3 or m >= 3):
-            return 'At-Risk (이탈 위험군)'
+            return "At-Risk (이탈 위험군)"
         elif r >= 4 and f <= 2:
-            return 'New Customers (신규)'
+            return "New Customers (신규)"
         else:
-            return 'Hibernating (휴면 유저)'
+            return "Hibernating (휴면 유저)"
 
-    rfm_df['Segment'] = rfm_df.apply(segment_customer, axis=1)
+    rfm_df["Segment"] = rfm_df.apply(segment_customer, axis=1)
 
-    # 5) Scatter Plot 차트 생성
     fig_scatter = px.scatter(
         rfm_df,
-        x='Recency',
-        y='Monetary',
-        size='Frequency',
-        color='Segment',
+        x="Recency",
+        y="Monetary",
+        size="Frequency",
+        color="Segment",
         hover_name=cust_col,
-        title='Customer Distribution: Recency vs Monetary (Size = Frequency)',
+        title="Customer Distribution: Recency vs Monetary (Size = Frequency)",
         labels={
-            'Recency': 'Recency (최근 구매 후 경과일)',
-            'Monetary': 'Monetary (총 구매 금액 $)',
-            'Frequency': '구매 빈도(회)',
-            'Segment': '고객 세그먼트'
+            "Recency": "Recency (최근 구매 후 경과일)",
+            "Monetary": "Monetary (총 구매 금액 $)",
+            "Frequency": "구매 빈도(회)",
+            "Segment": "고객 세그먼트",
         },
         color_discrete_map={
-            'VIP (Champs)': '#1f77b4',
-            'Loyal Customers': '#2ca02c',
-            'At-Risk (이탈 위험군)': '#d62728',
-            'New Customers (신규)': '#ff7f0e',
-            'Hibernating (휴면 유저)': '#7f7f7f'
+            "VIP (Champs)": "#1f77b4",
+            "Loyal Customers": "#2ca02c",
+            "At-Risk (이탈 위험군)": "#d62728",
+            "New Customers (신규)": "#ff7f0e",
+            "Hibernating (휴면 유저)": "#7f7f7f",
         },
-        opacity=0.75
+        opacity=0.75,
     )
 
     fig_scatter.update_layout(
         xaxis_title="← 최근 구매 (경과일 작음) | 오랫동안 미구매 (경과일 큼) →",
         yaxis_title="총 구매 금액 ($)",
         legend_title="세그먼트 구분",
-        height=480
+        height=480,
     )
 
     st.plotly_chart(fig_scatter, use_container_width=True)
 
-    # 6) 세그먼트별 고객 수 vs 매출 기여도 비중 비교 차트
-    st.markdown("#### ⚖️ 세그먼트별 고객 수 vs 매출 기여도 비중 비교 (Pareto Analysis)")
-
-    segment_summary = rfm_df.groupby('Segment').agg(
-        Customer_Count=(cust_col, 'count'),
-        Total_Revenue=('Monetary', 'sum')
-    ).reset_index()
-
-    total_customers = segment_summary['Customer_Count'].sum()
-    total_revenue = segment_summary['Total_Revenue'].sum()
-
-    segment_summary['Customer_Share'] = (segment_summary['Customer_Count'] / total_customers) * 100
-    segment_summary['Revenue_Share'] = (segment_summary['Total_Revenue'] / total_revenue) * 100
-
-    # Grouped Bar Melt 변환
-    comparison_melted = segment_summary.melt(
-        id_vars=['Segment'],
-        value_vars=['Customer_Share', 'Revenue_Share'],
-        var_name='Metric',
-        value_name='Percentage'
+    st.markdown(
+        "#### ⚖️ 세그먼트별 고객 수 vs 매출 기여도 비중 비교 (Pareto Analysis)"
     )
 
-    comparison_melted['Metric'] = comparison_melted['Metric'].map({
-        'Customer_Share': '고객 수 비중 (%)',
-        'Revenue_Share': '매출 기여도 비중 (%)'
-    })
+    segment_summary = (
+        rfm_df.groupby("Segment")
+        .agg(
+            Customer_Count=(cust_col, "count"), Total_Revenue=("Monetary", "sum")
+        )
+        .reset_index()
+    )
 
-    # X축 범주 순서 정의 (휴면 -> 신규 -> 이탈위험 -> Loyal -> VIP)
+    total_customers = segment_summary["Customer_Count"].sum()
+    total_revenue = segment_summary["Total_Revenue"].sum()
+
+    segment_summary["Customer_Share"] = (
+        segment_summary["Customer_Count"] / total_customers
+    ) * 100
+    segment_summary["Revenue_Share"] = (
+        segment_summary["Total_Revenue"] / total_revenue
+    ) * 100
+
+    comparison_melted = segment_summary.melt(
+        id_vars=["Segment"],
+        value_vars=["Customer_Share", "Revenue_Share"],
+        var_name="Metric",
+        value_name="Percentage",
+    )
+
+    comparison_melted["Metric"] = comparison_melted["Metric"].map(
+        {"Customer_Share": "고객 수 비중 (%)", "Revenue_Share": "매출 기여도 비중 (%)"}
+    )
+
     segment_order = [
-        'Hibernating (휴면 유저)',
-        'New Customers (신규)',
-        'At-Risk (이탈 위험군)',
-        'Loyal Customers',
-        'VIP (Champs)'
+        "Hibernating (휴면 유저)",
+        "New Customers (신규)",
+        "At-Risk (이탈 위험군)",
+        "Loyal Customers",
+        "VIP (Champs)",
     ]
 
     fig_compare = px.bar(
         comparison_melted,
-        x='Segment',
-        y='Percentage',
-        color='Metric',
-        barmode='group',
-        title='Customer Share vs Revenue Share by Segment',
-        labels={'Segment': '고객 세그먼트', 'Percentage': '비중 (%)', 'Metric': '구분'},
-        text_auto='.1f',
-        color_discrete_sequence=['#9467bd', '#1f77b4'] # 보라: 고객수, 파랑: 매출
+        x="Segment",
+        y="Percentage",
+        color="Metric",
+        barmode="group",
+        title="Customer Share vs Revenue Share by Segment",
+        labels={
+            "Segment": "고객 세그먼트",
+            "Percentage": "비중 (%)",
+            "Metric": "구분",
+        },
+        text_auto=".1f",
+        color_discrete_sequence=["#9467bd", "#1f77b4"],
     )
 
-    # X축 범주 정렬 순서 적용 (categoryorder & categoryarray)
     fig_compare.update_layout(
         height=360,
         yaxis=dict(title="비중 (%)", range=[0, 100]),
-        xaxis=dict(
-            categoryorder='array',
-            categoryarray=segment_order
+        xaxis=dict(categoryorder="array", categoryarray=segment_order),
+        legend=dict(
+            orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
         ),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(l=10, r=10, t=50, b=10)
+        margin=dict(l=10, r=10, t=50, b=10),
     )
 
     st.plotly_chart(fig_compare, use_container_width=True)
@@ -574,19 +676,28 @@ if cust_cols and date_cols and 'Total Sales' in filtered_df.columns:
     # ---------------------------------------------------------
     # 7) 동적 인사이트 및 세그먼트별 마케팅 액션 플랜
     # ---------------------------------------------------------
-    at_risk_row = segment_summary[segment_summary['Segment'] == 'At-Risk (이탈 위험군)']
-    vip_row = segment_summary[segment_summary['Segment'] == 'VIP (Champs)']
+    at_risk_row = segment_summary[
+        segment_summary["Segment"] == "At-Risk (이탈 위험군)"
+    ]
+    vip_row = segment_summary[segment_summary["Segment"] == "VIP (Champs)"]
 
-    at_risk_rev_share = at_risk_row['Revenue_Share'].values[0] if not at_risk_row.empty else 0
-    at_risk_cust_cnt = at_risk_row['Customer_Count'].values[0] if not at_risk_row.empty else 0
-    vip_rev_share = vip_row['Revenue_Share'].values[0] if not vip_row.empty else 0
+    at_risk_rev_share = (
+        at_risk_row["Revenue_Share"].values[0] if not at_risk_row.empty else 0
+    )
+    at_risk_cust_cnt = (
+        at_risk_row["Customer_Count"].values[0] if not at_risk_row.empty else 0
+    )
+    vip_rev_share = (
+        vip_row["Revenue_Share"].values[0] if not vip_row.empty else 0
+    )
 
     st.subheader("💡 Key Insights & Target Marketing Strategy")
 
     col_ins1, col_ins2 = st.columns(2)
 
     with col_ins1:
-        st.markdown(f"""
+        st.markdown(
+            f"""
         <div style="background-color: #f8f9fa; padding: 18px; border-radius: 8px; border-left: 5px solid #d62728; margin-bottom: 15px;">
             <h4 style="margin: 0; color: #d62728;">🚨 이탈 위험군 (At-Risk) 긴급 대응 필요</h4>
             <p style="font-size: 14px; margin-top: 8px; color: #333;">
@@ -594,9 +705,12 @@ if cust_cols and date_cols and 'Total Sales' in filtered_df.columns:
                 • <b>액션 플랜:</b> {at_risk_cust_cnt:,}명의 유저를 대상으로 <b>"복귀 전용 할인 쿠폰" 및 연관 상품 재추천 CRM 메시지</b>를 발송하여 리텐션을 회복해야 합니다.
             </p>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
 
-        st.markdown(f"""
+        st.markdown(
+            f"""
         <div style="background-color: #f8f9fa; padding: 18px; border-radius: 8px; border-left: 5px solid #1f77b4; margin-bottom: 15px;">
             <h4 style="margin: 0; color: #1f77b4;">👑 VIP & Loyal 유저 매출 락인(Lock-in)</h4>
             <p style="font-size: 14px; margin-top: 8px; color: #333;">
@@ -604,10 +718,13 @@ if cust_cols and date_cols and 'Total Sales' in filtered_df.columns:
                 • <b>액션 플랜:</b> 신제품 우선 체험권, VIP 전용 무료 배송 및 리워드 프로그램 강화를 통해 타사 이탈을 방지합니다.
             </p>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
 
     with col_ins2:
-        st.markdown("""
+        st.markdown(
+            """
         <div style="background-color: #f8f9fa; padding: 18px; border-radius: 8px; border-left: 5px solid #ff7f0e; margin-bottom: 15px;">
             <h4 style="margin: 0; color: #ff7f0e;">🌱 New Customers 2차 구매 유도</h4>
             <p style="font-size: 14px; margin-top: 8px; color: #333;">
@@ -615,9 +732,12 @@ if cust_cols and date_cols and 'Total Sales' in filtered_df.columns:
                 • <b>액션 플랜:</b> 첫 구매 후 7일 이내 사용 가능한 <b>"2차 구매 웰컴 혜택" 및 온보딩 모바일 푸시</b>로 LTV(고객 생애 가치)를 극대화해야 합니다.
             </p>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
 
-        st.markdown("""
+        st.markdown(
+            """
         <div style="background-color: #f8f9fa; padding: 18px; border-radius: 8px; border-left: 5px solid #7f7f7f; margin-bottom: 15px;">
             <h4 style="margin: 0; color: #555;">💤 휴면 유저 (Hibernating) 비용 효율화</h4>
             <p style="font-size: 14px; margin-top: 8px; color: #333;">
@@ -625,38 +745,72 @@ if cust_cols and date_cols and 'Total Sales' in filtered_df.columns:
                 • <b>액션 플랜:</b> 무분별한 유상 타깃 마케팅을 지양하고, 대형 시즌 프로모션(예: 블랙프라이데이) 때만 제한적으로 재활성화 메일을 발송합니다.
             </p>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
 
     # ---------------------------------------------------------
     # 8) 세그먼트별 상세 데이터표 (Expander)
     # ---------------------------------------------------------
     with st.expander("📋 세그먼트별 상세 지표 데이터표 확인하기"):
-        display_rfm = rfm_df.groupby('Segment').agg(
-            Customer_Count=(cust_col, 'count'),
-            Total_Monetary=('Monetary', 'sum'),
-            Avg_Recency=('Recency', 'mean'),
-            Avg_Frequency=('Frequency', 'mean'),
-            Avg_Monetary=('Monetary', 'mean')
-        ).reset_index()
+        display_rfm = (
+            rfm_df.groupby("Segment")
+            .agg(
+                Customer_Count=(cust_col, "count"),
+                Total_Monetary=("Monetary", "sum"),
+                Avg_Recency=("Recency", "mean"),
+                Avg_Frequency=("Frequency", "mean"),
+                Avg_Monetary=("Monetary", "mean"),
+            )
+            .reset_index()
+        )
 
-        display_rfm['Cust_Share (%)'] = (display_rfm['Customer_Count'] / total_customers) * 100
-        display_rfm['Revenue_Share (%)'] = (display_rfm['Total_Monetary'] / total_revenue) * 100
+        display_rfm["Cust_Share (%)"] = (
+            display_rfm["Customer_Count"] / total_customers
+        ) * 100
+        display_rfm["Revenue_Share (%)"] = (
+            display_rfm["Total_Monetary"] / total_revenue
+        ) * 100
 
-        display_rfm = display_rfm[['Segment', 'Customer_Count', 'Cust_Share (%)', 'Total_Monetary', 'Revenue_Share (%)', 'Avg_Recency', 'Avg_Frequency', 'Avg_Monetary']]
-        display_rfm.columns = ['세그먼트', '고객수(명)', '고객비중(%)', '총매출($)', '매출점유율(%)', '평균최근성(일)', '평균구매(회)', '평균구매액($)']
+        display_rfm = display_rfm[
+            [
+                "Segment",
+                "Customer_Count",
+                "Cust_Share (%)",
+                "Total_Monetary",
+                "Revenue_Share (%)",
+                "Avg_Recency",
+                "Avg_Frequency",
+                "Avg_Monetary",
+            ]
+        ]
+        display_rfm.columns = [
+            "세그먼트",
+            "고객수(명)",
+            "고객비중(%)",
+            "총매출($)",
+            "매출점유율(%)",
+            "평균최근성(일)",
+            "평균구매(회)",
+            "평균구매액($)",
+        ]
 
         st.dataframe(
-            display_rfm.style.format({
-                '고객수(명)': '{:,}',
-                '고객비중(%)': '{:.1f}%',
-                '총매출($)': '${:,.2f}',
-                '매출점유율(%)': '{:.1f}%',
-                '평균최근성(일)': '{:.1f}',
-                '평균구매(회)': '{:.1f}',
-                '평균구매액($)': '${:,.2f}'
-            }),
-            use_container_width=True
+            display_rfm.style.format(
+                {
+                    "고객수(명)": "{:,}",
+                    "고객비중(%)": "{:.1f}%",
+                    "총매출($)": "${:,.2f}",
+                    "매출점유율(%)": "{:.1f}%",
+                    "평균최근성(일)": "{:.1f}",
+                    "평균구매(회)": "{:.1f}",
+                    "평균구매액($)": "${:,.2f}",
+                }
+            ),
+            use_container_width=True,
         )
 
 else:
-    st.warning("RFM 분석을 수행하기 위한 필수 컬럼(고객 ID, 날짜, 매출액)을 찾을 수 없습니다.")
+    st.warning(
+        "RFM 분석을 수행하기 위한 필수 컬럼(고객 ID, 날짜, 매출액)을 찾을 수 없습니다."
+    )

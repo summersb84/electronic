@@ -371,12 +371,53 @@ with col_chart2:
         st.warning("교차 구매 분석을 위한 식별자(Order/Customer ID) 또는 제품(Product) 컬럼이 부족합니다.")
 
 
+# ---------------------------------------------------------
+# 제품 분석 하단: 상위 Top 5 제품 월별 매출 추이 (Time-Series Line Chart)
+# ---------------------------------------------------------
+st.markdown("---")
+st.markdown("#### 📈 상위 Top 5 제품 월별 매출 추이 (Product Monthly Revenue Trend)")
 
-# === 💡 Insights & Cross-selling Strategy ===
-st.info(
-    "💡 **교차 구매(Cross-Selling) 인사이트 활용 안내**\n"
-    "- **상단 매출 막대 그래프:** 전체 매출 기여도가 높은 효자 상품(Hero Product)을 식별합니다.\n"
-    "- **교차 구매 히트맵:** 동시 구매 빈도가 높은 제품 조합(진한 보라색 칸)을 발굴하여 **'함께 많이 찾는 상품' 묶음 할인(Bundle) 구성**이나 **상세페이지 하단 연관 상품 추천 연동**에 활용합니다."
+date_cols = [c for c in filtered_df.columns if 'date' in c.lower()]
+prod_cols = [c for c in filtered_df.columns if 'prod' in c.lower() or 'item' in c.lower() or 'name' in c.lower()]
+
+if date_cols and prod_cols and 'Total Sales' in filtered_df.columns:
+    date_col = date_cols[0]
+    prod_col = prod_cols[0]
+
+    # 1) 데이터 복사 및 연-월(YYYY-MM) 컬럼 생성
+    ts_df = filtered_df.copy()
+    ts_df['YearMonth'] = ts_df[date_col].dt.to_period('M').astype(str)
+
+    # 2) 전체 기간 기준 매출 Top 5 제품 추출
+    top5_products = ts_df.groupby(prod_col)['Total Sales'].sum().nlargest(5).index.tolist()
+
+    # 3) Top 5 제품 대상 월별 매출 집계
+    ts_top5 = ts_df[ts_df[prod_col].isin(top5_products)]
+    monthly_trend = ts_top5.groupby(['YearMonth', prod_col])['Total Sales'].sum().reset_index()
+
+    # 4) Line Chart 생성
+    fig_line = px.line(
+        monthly_trend,
+        x='YearMonth',
+        y='Total Sales',
+        color=prod_col,
+        markers=True,
+        title='Monthly Sales Trend for Top 5 Products',
+        labels={'YearMonth': '연월 (Year-Month)', 'Total Sales': '매출액 ($)', prod_col: '제품명'}
+    )
+
+    fig_line.update_layout(
+        height=420,
+        xaxis_title="연월",
+        yaxis_title="총 매출액 ($)",
+        legend_title="상위 제품명",
+        margin=dict(l=10, r=10, t=50, b=10)
+    )
+
+    st.plotly_chart(fig_line, use_container_width=True)
+
+else:
+    st.warning("시계열 분석을 위한 날짜(Date), 제품명, 매출액 컬럼을 찾을 수 없습니다.")
 )
 
 import plotly.express as px

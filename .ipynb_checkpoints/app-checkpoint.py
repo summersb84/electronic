@@ -516,108 +516,168 @@ else:
         "시계열 분석을 위한 날짜(Date), 제품명, 매출액 컬럼을 찾을 수 없습니다."
     )
 
-
 # ---------------------------------------------------------
-# 5. 인구통계학(Demographics) 기반 고객 분석
+# 5. 인구통계학(Demographics) 기반 고객 분석 (ARPU 관점)
 # ---------------------------------------------------------
 st.markdown("---")
 st.header("👥 고객 인구통계학 분석 (Demographic Analysis)")
 
 col_demo1, col_demo2 = st.columns(2)
 
-# === [좌측] 연령대 및 성별 고객 분포 ===
+# 데이터 컬럼 자동 탐색
+age_col = [c for c in filtered_df.columns if "age" in c.lower()]
+gender_col = [
+    c for c in filtered_df.columns if "gender" in c.lower() or "sex" in c.lower()
+]
+sales_col = [
+    c
+    for c in filtered_df.columns
+    if "amount" in c.lower()
+    or "revenue" in c.lower()
+    or "total" in c.lower()
+    or "price" in c.lower()
+]
+
+# === [좌측] 연령대별 평균 구매 금액 ===
 with col_demo1:
-    st.subheader("📊 연령대 및 성별 고객 비중")
+    st.subheader("📊 연령대별 평균 구매 금액 (ARPU)")
 
-    # 데이터 컬럼 자동 탐색 (Age, Gender)
-    age_col = [c for c in filtered_df.columns if "age" in c.lower()]
-    gender_col = [
-        c
-        for c in filtered_df.columns
-        if "gender" in c.lower() or "sex" in c.lower()
-    ]
-
-    if age_col and gender_col:
-        demo_df = (
-            filtered_df.groupby([age_col[0], gender_col[0]])
-            .size()
-            .reset_index(name="Customer_Count")
+    if age_col and sales_col:
+        age_arpu = (
+            filtered_df.groupby(age_col[0])[sales_col[0]]
+            .mean()
+            .reset_index(name="Avg_Spending")
         )
 
-        fig_demo = px.bar(
-            demo_df,
+        fig_age_arpu = px.bar(
+            age_arpu,
             x=age_col[0],
-            y="Customer_Count",
-            color=gender_col[0],
-            barmode="group",
-            title="Customer Count by Age Group & Gender",
-            labels={
-                age_col[0]: "연령대",
-                "Customer_Count": "고객 수(명)",
-                gender_col[0]: "성별",
-            },
-            color_discrete_sequence=px.colors.qualitative.Pastel,
+            y="Avg_Spending",
+            title="Average Spending per Customer by Age Group",
+            labels={age_col[0]: "연령대", "Avg_Spending": "평균 구매액 ($)"},
+            text_auto=",.0f",
+            color="Avg_Spending",
+            color_continuous_scale="Blues",
         )
-        fig_demo.update_layout(height=400, margin=dict(l=10, r=10, t=40, b=10))
-        st.plotly_chart(fig_demo, use_container_width=True)
-    else:
-        st.info(
-            "데이터셋 내에 연령(Age) 또는 성별(Gender) 관련 컬럼이 없어 표시할 수 없습니다."
-        )
-
-# === [우측] 거주 지역/채널별 고객 분포 ===
-with col_demo2:
-    st.subheader("📍 지역/채널별 고객 분포")
-
-    loc_col = [
-        c
-        for c in filtered_df.columns
-        if "region" in c.lower()
-        or "city" in c.lower()
-        or "state" in c.lower()
-        or "location" in c.lower()
-    ]
-
-    if loc_col:
-        loc_df = (
-            filtered_df.groupby(loc_col[0])
-            .size()
-            .reset_index(name="Customer_Count")
-            .sort_values(by="Customer_Count", ascending=True)
-        )
-
-        fig_loc = px.bar(
-            loc_df.tail(10),  # 상위 10개 지역
-            x="Customer_Count",
-            y=loc_col[0],
-            orientation="h",
-            title="Top Customer Distribution by Region",
-            labels={"Customer_Count": "고객 수(명)", loc_col[0]: "지역"},
-            color="Customer_Count",
-            color_continuous_scale="Purples",
-        )
-        fig_loc.update_layout(
+        fig_age_arpu.update_layout(
             coloraxis_showscale=False,
             height=400,
             margin=dict(l=10, r=10, t=40, b=10),
         )
-        st.plotly_chart(fig_loc, use_container_width=True)
+        st.plotly_chart(fig_age_arpu, use_container_width=True)
     else:
         st.info(
-            "데이터셋 내에 지역(Region/Location) 관련 컬럼이 없어 표시할 수 없습니다."
+            "데이터셋 내에 연령(Age) 또는 매출 관련 컬럼이 없어 표시할 수 없습니다."
         )
 
+# === [우측] 성별 평균 구매 금액 ===
+with col_demo2:
+    st.subheader("💳 성별 평균 구매 금액 (ARPU)")
+
+    if gender_col and sales_col:
+        gender_arpu = (
+            filtered_df.groupby(gender_col[0])[sales_col[0]]
+            .mean()
+            .reset_index(name="Avg_Spending")
+        )
+
+        fig_gender_arpu = px.bar(
+            gender_arpu,
+            x=gender_col[0],
+            y="Avg_Spending",
+            title="Average Spending per Customer by Gender",
+            labels={gender_col[0]: "성별", "Avg_Spending": "평균 구매액 ($)"},
+            text_auto=",.0f",
+            color=gender_col[0],
+            color_discrete_sequence=px.colors.qualitative.Pastel,
+        )
+        fig_gender_arpu.update_layout(
+            height=400, margin=dict(l=10, r=10, t=40, b=10)
+        )
+        st.plotly_chart(fig_gender_arpu, use_container_width=True)
+    else:
+        st.info(
+            "데이터셋 내에 성별(Gender) 또는 매출 관련 컬럼이 없어 표시할 수 없습니다."
+        )
+
+
 # ---------------------------------------------------------
-# 6. 세그먼트별 고객 수 vs 매출 기여도 비중 비교 (Pareto Analysis)
+# 6. RFM 계산 및 세그먼트 생성 (RFM 로직 복원)
 # ---------------------------------------------------------
-# ※ with col_demo2 블록 밖으로 빠져나와 전체 화면 너비를 사용합니다.
+# 컬럼 자동 찾기
+cust_cols = [
+    c
+    for c in filtered_df.columns
+    if "customer" in c.lower() or "user" in c.lower() or "id" in c.lower()
+]
+date_cols = [
+    c
+    for c in filtered_df.columns
+    if "date" in c.lower() or "time" in c.lower() or "day" in c.lower()
+]
+
+rfm_df = pd.DataFrame()
+
+if cust_cols and date_cols and sales_col:
+    cust_col = cust_cols[0]
+    date_col = date_cols[0]
+    val_col = sales_col[0]
+
+    # 날짜형 변환
+    temp_df = filtered_df.copy()
+    temp_df[date_col] = pd.to_datetime(temp_df[date_col])
+    max_date = temp_df[date_col].max() + pd.Timedelta(days=1)
+
+    # RFM 집계
+    rfm_df = (
+        temp_df.groupby(cust_col)
+        .agg(
+            Recency=(date_col, lambda x: (max_date - x.max()).days),
+            Frequency=(date_col, "count"),
+            Monetary=(val_col, "sum"),
+        )
+        .reset_index()
+    )
+
+    # RFM 스코어 계산 (1~5점)
+    rfm_df["R_Score"] = pd.qcut(
+        rfm_df["Recency"], 5, labels=[5, 4, 3, 2, 1], duplicates="drop"
+    ).astype(int)
+    rfm_df["F_Score"] = pd.qcut(
+        rfm_df["Frequency"].rank(method="first"),
+        5,
+        labels=[1, 2, 3, 4, 5],
+        duplicates="drop",
+    ).astype(int)
+    rfm_df["M_Score"] = pd.qcut(
+        rfm_df["Monetary"], 5, labels=[1, 2, 3, 4, 5], duplicates="drop"
+    ).astype(int)
+
+    # RFM 세그먼트 분류 함수
+    def segment_rfm(df):
+        r, f, m = df["R_Score"], df["F_Score"], df["M_Score"]
+        if r >= 4 and f >= 4 and m >= 4:
+            return "VIP (Champs)"
+        elif r >= 3 and f >= 3:
+            return "Loyal Customers"
+        elif r >= 4 and f == 1:
+            return "New Customers (신규)"
+        elif r <= 2 and f >= 3:
+            return "At-Risk (이탈 위험군)"
+        else:
+            return "Hibernating (휴면 유저)"
+
+    rfm_df["Segment"] = rfm_df.apply(segment_rfm, axis=1)
+
+# ---------------------------------------------------------
+# 7. 세그먼트별 고객 수 vs 매출 기여도 비중 비교 (Pareto Analysis)
+# ---------------------------------------------------------
 st.markdown("---")
-st.markdown(
-    "#### ⚖️ 세그먼트별 고객 수 vs 매출 기여도 비중 비교 (Pareto Analysis)"
+st.subheader(
+    "⚖️ 세그먼트별 고객 수 vs 매출 기여도 비중 비교 (Pareto Analysis)"
 )
 
-# RFM 데이터가 존재하는지 검증 후 차트 생성
-if "rfm_df" in locals() and not rfm_df.empty:
+if not rfm_df.empty:
     segment_summary = (
         rfm_df.groupby("Segment")
         .agg(
@@ -673,7 +733,7 @@ if "rfm_df" in locals() and not rfm_df.empty:
     )
 
     fig_compare.update_layout(
-        height=360,
+        height=380,
         yaxis=dict(title="비중 (%)", range=[0, 100]),
         xaxis=dict(categoryorder="array", categoryarray=segment_order),
         legend=dict(
@@ -685,7 +745,7 @@ if "rfm_df" in locals() and not rfm_df.empty:
     st.plotly_chart(fig_compare, use_container_width=True)
 
     # ---------------------------------------------------------
-    # 7. 동적 인사이트 및 세그먼트별 마케팅 액션 플랜
+    # 8. 동적 인사이트 및 세그먼트별 마케팅 액션 플랜
     # ---------------------------------------------------------
     at_risk_row = segment_summary[
         segment_summary["Segment"] == "At-Risk (이탈 위험군)"
@@ -761,7 +821,7 @@ if "rfm_df" in locals() and not rfm_df.empty:
         )
 
     # ---------------------------------------------------------
-    # 8. 세그먼트별 상세 데이터표 (Expander)
+    # 9. 세그먼트별 상세 데이터표 (Expander)
     # ---------------------------------------------------------
     with st.expander("📋 세그먼트별 상세 지표 데이터표 확인하기"):
         display_rfm = (

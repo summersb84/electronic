@@ -517,92 +517,62 @@ else:
     )
 
 # ---------------------------------------------------------
-# 5. RFM 기반 고객 세분화 분석 (Scatter Plot, Pareto & Insights)
+# 5. 인구통계학(Demographics) 기반 고객 분석
 # ---------------------------------------------------------
 st.markdown("---")
-st.header("🎯 RFM 기반 고객 세분화 분석 (Scatter Plot & Insights)")
+st.header("👥 고객 인구통계학 분석 (Demographic Analysis)")
 
-cust_cols = [
-    c
-    for c in filtered_df.columns
-    if "customer" in c.lower() or "user" in c.lower() or "client" in c.lower()
-]
-date_cols = [c for c in filtered_df.columns if "date" in c.lower()]
+col_demo1, col_demo2 = st.columns(2)
 
-if cust_cols and date_cols and "Total Sales" in filtered_df.columns:
-    cust_col = cust_cols[0]
-    date_col = date_cols[0]
-
-    max_date = filtered_df[date_col].max() + pd.Timedelta(days=1)
-
-    rfm_df = (
-        filtered_df.groupby(cust_col)
-        .agg(
-            Recency=(date_col, lambda x: (max_date - x.max()).days),
-            Frequency=(date_col, "count"),
-            Monetary=("Total Sales", "sum"),
+# === [좌측] 연령대 및 성별 고객 분포 ===
+with col_demo1:
+    st.subheader("📊 연령대 및 성별 고객 비중")
+    
+    # 데이터 컬럼 자동 탐색 (Age, Gender)
+    age_col = [c for c in filtered_df.columns if 'age' in c.lower()]
+    gender_col = [c for c in filtered_df.columns if 'gender' in c.lower() or 'sex' in c.lower()]
+    
+    if age_col and gender_col:
+        demo_df = filtered_df.groupby([age_col[0], gender_col[0]]).size().reset_index(name='Customer_Count')
+        
+        fig_demo = px.bar(
+            demo_df,
+            x=age_col[0],
+            y='Customer_Count',
+            color=gender_col[0],
+            barmode='group',
+            title="Customer Count by Age Group & Gender",
+            labels={age_col[0]: "연령대", "Customer_Count": "고객 수(명)", gender_col[0]: "성별"},
+            color_discrete_sequence=px.colors.qualitative.Pastel
         )
-        .reset_index()
-    )
+        fig_demo.update_layout(height=400, margin=dict(l=10, r=10, t=40, b=10))
+        st.plotly_chart(fig_demo, use_container_width=True)
+    else:
+        st.info("데이터셋 내에 연령(Age) 또는 성별(Gender) 관련 컬럼이 없어 표시할 수 없습니다.")
 
-    rfm_df["R_Score"] = pd.qcut(
-        rfm_df["Recency"], q=5, labels=[5, 4, 3, 2, 1], duplicates="drop"
-    ).astype(int)
-    rfm_df["F_Score"] = pd.cut(
-        rfm_df["Frequency"], bins=5, labels=[1, 2, 3, 4, 5], duplicates="drop"
-    ).astype(int)
-    rfm_df["M_Score"] = pd.qcut(
-        rfm_df["Monetary"], q=5, labels=[1, 2, 3, 4, 5], duplicates="drop"
-    ).astype(int)
-
-    def segment_customer(df):
-        r, f, m = df["R_Score"], df["F_Score"], df["M_Score"]
-
-        if r >= 4 and f >= 4 and m >= 4:
-            return "VIP (Champs)"
-        elif r >= 3 and (f >= 3 or m >= 3):
-            return "Loyal Customers"
-        elif r <= 2 and (f >= 3 or m >= 3):
-            return "At-Risk (이탈 위험군)"
-        elif r >= 4 and f <= 2:
-            return "New Customers (신규)"
-        else:
-            return "Hibernating (휴면 유저)"
-
-    rfm_df["Segment"] = rfm_df.apply(segment_customer, axis=1)
-
-    fig_scatter = px.scatter(
-        rfm_df,
-        x="Recency",
-        y="Monetary",
-        size="Frequency",
-        color="Segment",
-        hover_name=cust_col,
-        title="Customer Distribution: Recency vs Monetary (Size = Frequency)",
-        labels={
-            "Recency": "Recency (최근 구매 후 경과일)",
-            "Monetary": "Monetary (총 구매 금액 $)",
-            "Frequency": "구매 빈도(회)",
-            "Segment": "고객 세그먼트",
-        },
-        color_discrete_map={
-            "VIP (Champs)": "#1f77b4",
-            "Loyal Customers": "#2ca02c",
-            "At-Risk (이탈 위험군)": "#d62728",
-            "New Customers (신규)": "#ff7f0e",
-            "Hibernating (휴면 유저)": "#7f7f7f",
-        },
-        opacity=0.75,
-    )
-
-    fig_scatter.update_layout(
-        xaxis_title="← 최근 구매 (경과일 작음) | 오랫동안 미구매 (경과일 큼) →",
-        yaxis_title="총 구매 금액 ($)",
-        legend_title="세그먼트 구분",
-        height=480,
-    )
-
-    st.plotly_chart(fig_scatter, use_container_width=True)
+# === [우측] 거주 지역/채널별 고객 분포 ===
+with col_demo2:
+    st.subheader("📍 지역/채널별 고객 분포")
+    
+    loc_col = [c for c in filtered_df.columns if 'region' in c.lower() or 'city' in c.lower() or 'state' in c.lower() or 'location' in c.lower()]
+    
+    if loc_col:
+        loc_df = filtered_df.groupby(loc_col[0]).size().reset_index(name='Customer_Count').sort_values(by='Customer_Count', ascending=True)
+        
+        fig_loc = px.bar(
+            loc_df.tail(10), # 상위 10개 지역
+            x='Customer_Count',
+            y=loc_col[0],
+            orientation='h',
+            title="Top Customer Distribution by Region",
+            labels={'Customer_Count': "고객 수(명)", loc_col[0]: "지역"},
+            color='Customer_Count',
+            color_continuous_scale='Purples'
+        )
+        fig_loc.update_layout(coloraxis_showscale=False, height=400, margin=dict(l=10, r=10, t=40, b=10))
+        st.plotly_chart(fig_loc, use_container_width=True)
+    else:
+        st.info("데이터셋 내에 지역(Region/Location) 관련 컬럼이 없어 표시할 수 없습니다.")
 
     st.markdown(
         "#### ⚖️ 세그먼트별 고객 수 vs 매출 기여도 비중 비교 (Pareto Analysis)"

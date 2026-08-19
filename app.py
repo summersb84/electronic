@@ -520,7 +520,7 @@ else:
 # 5. 인구통계학(Demographics) 기반 고객 분석 (ARPU 관점)
 # ---------------------------------------------------------
 st.markdown("---")
-st.header("👥 고객 인구통계학 분석 (Demographic Analysis)")
+st.header("👥 고객 특성별 (Demographic Analysis)")
 
 col_demo1, col_demo2 = st.columns(2)
 

@@ -516,6 +516,19 @@ else:
         "시계열 분석을 위한 날짜(Date), 제품명, 매출액 컬럼을 찾을 수 없습니다."
     )
 
+오류의 핵심 원인은 with col_demo2: 블록 안의 들여쓰기(Indentation) 오류와 줄바꿈 문자/특수 공백(NBSP) 문제입니다.
+
+with col_demo2: 내부에서 3D/지역 차트를 그린 직후 들여쓰기가 계속 유지된 채로 아래의 st.markdown("#### ⚖️ 세그먼트별 고객 수...") 이하 전체 로직이 우측 컬럼 안에 갇혀버렸고, 이 때문에 if-else 구조가 꼬여 구문 오류(SyntaxError 또는 IndentationError)가 발생했습니다.
+
+또한, 보이지 않는 줄바꿈/특수 공백 문자가 섞여 있어 파이썬 인터프리터가 들여쓰기를 인식하지 못했던 문제입니다.
+
+🛠️ 수정 완료된 전체 코드
+인구통계학 좌우 차트 배치는 깔끔하게 완료하고, 그 밑에 세그먼트별 매출 기여도 비교 차트, 동적 인사이트, 상세 데이터표가 화면 전체 너비로 시원하게 이어지도록 들여쓰기를 올바르게 정돈한 코드입니다.
+
+Python
+import plotly.express as px
+import streamlit as st
+
 # ---------------------------------------------------------
 # 5. 인구통계학(Demographics) 기반 고객 분석
 # ---------------------------------------------------------
@@ -527,61 +540,101 @@ col_demo1, col_demo2 = st.columns(2)
 # === [좌측] 연령대 및 성별 고객 분포 ===
 with col_demo1:
     st.subheader("📊 연령대 및 성별 고객 비중")
-    
+
     # 데이터 컬럼 자동 탐색 (Age, Gender)
-    age_col = [c for c in filtered_df.columns if 'age' in c.lower()]
-    gender_col = [c for c in filtered_df.columns if 'gender' in c.lower() or 'sex' in c.lower()]
-    
+    age_col = [c for c in filtered_df.columns if "age" in c.lower()]
+    gender_col = [
+        c
+        for c in filtered_df.columns
+        if "gender" in c.lower() or "sex" in c.lower()
+    ]
+
     if age_col and gender_col:
-        demo_df = filtered_df.groupby([age_col[0], gender_col[0]]).size().reset_index(name='Customer_Count')
-        
+        demo_df = (
+            filtered_df.groupby([age_col[0], gender_col[0]])
+            .size()
+            .reset_index(name="Customer_Count")
+        )
+
         fig_demo = px.bar(
             demo_df,
             x=age_col[0],
-            y='Customer_Count',
+            y="Customer_Count",
             color=gender_col[0],
-            barmode='group',
+            barmode="group",
             title="Customer Count by Age Group & Gender",
-            labels={age_col[0]: "연령대", "Customer_Count": "고객 수(명)", gender_col[0]: "성별"},
-            color_discrete_sequence=px.colors.qualitative.Pastel
+            labels={
+                age_col[0]: "연령대",
+                "Customer_Count": "고객 수(명)",
+                gender_col[0]: "성별",
+            },
+            color_discrete_sequence=px.colors.qualitative.Pastel,
         )
         fig_demo.update_layout(height=400, margin=dict(l=10, r=10, t=40, b=10))
         st.plotly_chart(fig_demo, use_container_width=True)
     else:
-        st.info("데이터셋 내에 연령(Age) 또는 성별(Gender) 관련 컬럼이 없어 표시할 수 없습니다.")
+        st.info(
+            "데이터셋 내에 연령(Age) 또는 성별(Gender) 관련 컬럼이 없어 표시할 수 없습니다."
+        )
 
 # === [우측] 거주 지역/채널별 고객 분포 ===
 with col_demo2:
     st.subheader("📍 지역/채널별 고객 분포")
-    
-    loc_col = [c for c in filtered_df.columns if 'region' in c.lower() or 'city' in c.lower() or 'state' in c.lower() or 'location' in c.lower()]
-    
+
+    loc_col = [
+        c
+        for c in filtered_df.columns
+        if "region" in c.lower()
+        or "city" in c.lower()
+        or "state" in c.lower()
+        or "location" in c.lower()
+    ]
+
     if loc_col:
-        loc_df = filtered_df.groupby(loc_col[0]).size().reset_index(name='Customer_Count').sort_values(by='Customer_Count', ascending=True)
-        
-        fig_loc = px.bar(
-            loc_df.tail(10), # 상위 10개 지역
-            x='Customer_Count',
-            y=loc_col[0],
-            orientation='h',
-            title="Top Customer Distribution by Region",
-            labels={'Customer_Count': "고객 수(명)", loc_col[0]: "지역"},
-            color='Customer_Count',
-            color_continuous_scale='Purples'
+        loc_df = (
+            filtered_df.groupby(loc_col[0])
+            .size()
+            .reset_index(name="Customer_Count")
+            .sort_values(by="Customer_Count", ascending=True)
         )
-        fig_loc.update_layout(coloraxis_showscale=False, height=400, margin=dict(l=10, r=10, t=40, b=10))
+
+        fig_loc = px.bar(
+            loc_df.tail(10),  # 상위 10개 지역
+            x="Customer_Count",
+            y=loc_col[0],
+            orientation="h",
+            title="Top Customer Distribution by Region",
+            labels={"Customer_Count": "고객 수(명)", loc_col[0]: "지역"},
+            color="Customer_Count",
+            color_continuous_scale="Purples",
+        )
+        fig_loc.update_layout(
+            coloraxis_showscale=False,
+            height=400,
+            margin=dict(l=10, r=10, t=40, b=10),
+        )
         st.plotly_chart(fig_loc, use_container_width=True)
     else:
-        st.info("데이터셋 내에 지역(Region/Location) 관련 컬럼이 없어 표시할 수 없습니다.")
+        st.info(
+            "데이터셋 내에 지역(Region/Location) 관련 컬럼이 없어 표시할 수 없습니다."
+        )
 
-    st.markdown(
-        "#### ⚖️ 세그먼트별 고객 수 vs 매출 기여도 비중 비교 (Pareto Analysis)"
-    )
+# ---------------------------------------------------------
+# 6. 세그먼트별 고객 수 vs 매출 기여도 비중 비교 (Pareto Analysis)
+# ---------------------------------------------------------
+# ※ with col_demo2 블록 밖으로 빠져나와 전체 화면 너비를 사용합니다.
+st.markdown("---")
+st.markdown(
+    "#### ⚖️ 세그먼트별 고객 수 vs 매출 기여도 비중 비교 (Pareto Analysis)"
+)
 
+# RFM 데이터가 존재하는지 검증 후 차트 생성
+if "rfm_df" in locals() and not rfm_df.empty:
     segment_summary = (
         rfm_df.groupby("Segment")
         .agg(
-            Customer_Count=(cust_col, "count"), Total_Revenue=("Monetary", "sum")
+            Customer_Count=(cust_col, "count"),
+            Total_Revenue=("Monetary", "sum"),
         )
         .reset_index()
     )
@@ -644,7 +697,7 @@ with col_demo2:
     st.plotly_chart(fig_compare, use_container_width=True)
 
     # ---------------------------------------------------------
-    # 7) 동적 인사이트 및 세그먼트별 마케팅 액션 플랜
+    # 7. 동적 인사이트 및 세그먼트별 마케팅 액션 플랜
     # ---------------------------------------------------------
     at_risk_row = segment_summary[
         segment_summary["Segment"] == "At-Risk (이탈 위험군)"
@@ -720,7 +773,7 @@ with col_demo2:
         )
 
     # ---------------------------------------------------------
-    # 8) 세그먼트별 상세 데이터표 (Expander)
+    # 8. 세그먼트별 상세 데이터표 (Expander)
     # ---------------------------------------------------------
     with st.expander("📋 세그먼트별 상세 지표 데이터표 확인하기"):
         display_rfm = (
@@ -782,5 +835,5 @@ with col_demo2:
 
 else:
     st.warning(
-        "RFM 분석을 수행하기 위한 필수 컬럼(고객 ID, 날짜, 매출액)을 찾을 수 없습니다."
+        "RFM 분석을 수행하기 위한 필수 컬럼(고객 ID, 날짜, 매출액)을 찾을 수 없거나 데이터가 비어있습니다."
     )
